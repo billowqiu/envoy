@@ -17,6 +17,7 @@ IoResult RawBufferSocket::doRead(Buffer::Instance& buffer) {
   PostIoAction action = PostIoAction::KeepOpen;
   uint64_t bytes_read = 0;
   bool end_stream = false;
+  // ET 模式下，一直读数据，直到返回 eagain
   do {
     Api::IoCallUint64Result result = callbacks_->ioHandle().read(buffer, absl::nullopt);
 

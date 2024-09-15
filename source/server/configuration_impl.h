@@ -65,7 +65,7 @@ private:
 /**
  * Utilities for creating a filter chain for a network connection.
  */
-class FilterChainUtility {
+class FilterChainUtility : Logger::Loggable<Logger::Id::config> {
 public:
   /**
    * Given a connection and a list of factories, create a new filter chain. Chain creation will

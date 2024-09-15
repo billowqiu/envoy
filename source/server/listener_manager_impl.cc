@@ -80,6 +80,7 @@ std::vector<Network::FilterFactoryCb> ProdListenerComponentFactory::createNetwor
     const Protobuf::RepeatedPtrField<envoy::config::listener::v3::Filter>& filters,
     Server::Configuration::FilterChainFactoryContext& filter_chain_factory_context) {
   std::vector<Network::FilterFactoryCb> ret;
+  ENVOY_LOG(debug, "create createNetworkFilterFactoryList_");
   for (ssize_t i = 0; i < filters.size(); i++) {
     const auto& proto_config = filters[i];
     ENVOY_LOG(debug, "  filter #{}:", i);
@@ -243,7 +244,9 @@ ListenerManagerImpl::ListenerManagerImpl(Instance& server,
             return dumpListenerConfigs(name_matcher);
           })),
       enable_dispatcher_stats_(enable_dispatcher_stats), quic_stat_names_(quic_stat_names) {
+  // 创建 worker 线程
   for (uint32_t i = 0; i < server.options().concurrency(); i++) {
+    ENVOY_LOG(debug, "create {} thread", absl::StrCat("worker_", i));
     workers_.emplace_back(
         worker_factory.createWorker(i, server.overloadManager(), absl::StrCat("worker_", i)));
   }
@@ -437,7 +440,9 @@ bool ListenerManagerImpl::addOrUpdateListenerInternal(
   if (existing_warming_listener != warming_listeners_.end()) {
     // In this case we can just replace inline.
     ASSERT(workers_started_);
+    ENVOY_LOG(debug, "existing_warming_listener {}", (*existing_warming_listener)->name());
     new_listener->debugLog("update warming listener");
+    ENVOY_LOG(debug, "update warming listener {}", new_listener->name());
     if (!(*existing_warming_listener)->hasCompatibleAddress(*new_listener)) {
       setNewOrDrainingSocketFactory(name, config.address(), *new_listener);
     } else {
@@ -447,6 +452,7 @@ bool ListenerManagerImpl::addOrUpdateListenerInternal(
   } else if (existing_active_listener != active_listeners_.end()) {
     // In this case we have no warming listener, so what we do depends on whether workers
     // have been started or not.
+    ENVOY_LOG(debug, "existing_active_listener {}", (*existing_active_listener)->name());
     if (!(*existing_active_listener)->hasCompatibleAddress(*new_listener)) {
       setNewOrDrainingSocketFactory(name, config.address(), *new_listener);
     } else {
@@ -454,14 +460,17 @@ bool ListenerManagerImpl::addOrUpdateListenerInternal(
     }
     if (workers_started_) {
       new_listener->debugLog("add warming listener");
+      ENVOY_LOG(debug, "add warming listener {}", new_listener->name());
       warming_listeners_.emplace_back(std::move(new_listener));
     } else {
       new_listener->debugLog("update active listener");
+      ENVOY_LOG(debug, "update active listener {}", new_listener->name());
       *existing_active_listener = std::move(new_listener);
     }
   } else {
     // We have no warming or active listener so we need to make a new one. What we do depends on
     // whether workers have been started or not.
+    ENVOY_LOG(debug, "no warming or active listener, just make new listener {}", new_listener->name());
     setNewOrDrainingSocketFactory(name, config.address(), *new_listener);
     if (workers_started_) {
       new_listener->debugLog("add warming listener");
@@ -624,7 +633,9 @@ void ListenerManagerImpl::onListenerWarmed(ListenerImpl& listener) {
     removeListenerInternal(listener.name(), true);
     return;
   }
+  ENVOY_LOG(debug, "onListenerWarmed {} add to all workers", listener.name());
   for (const auto& worker : workers_) {
+    // 每个 worker 线程都会 listen同一个 port
     addListenerToWorker(*worker, absl::nullopt, listener, nullptr);
   }
 
@@ -659,6 +670,7 @@ void ListenerManagerImpl::inPlaceFilterChainUpdate(ListenerImpl& listener) {
   ASSERT(existing_active_listener != active_listeners_.end());
   ASSERT(*existing_active_listener != nullptr);
 
+  ENVOY_LOG(debug, "inPlaceFilterChainUpdate {} add to all workers", listener.name());
   for (const auto& worker : workers_) {
     // Explicitly override the existing listener with a new listener config.
     addListenerToWorker(*worker, listener.listenerTag(), listener, nullptr);
@@ -802,6 +814,7 @@ void ListenerManagerImpl::startWorkers(GuardDog& guard_dog, std::function<void()
       removeListenerInternal(listener->name(), false);
       continue;
     }
+    ENVOY_LOG(debug, "startWorkers add listener {} to all workers", listener->name());
     for (const auto& worker : workers_) {
       addListenerToWorker(*worker, absl::nullopt, *listener,
                           [this, listeners_pending_init, callback]() {
@@ -999,6 +1012,7 @@ Network::ListenSocketFactoryPtr ListenerManagerImpl::createListenSocketFactory(
     bind_type = listener.reusePort() ? ListenerComponentFactory::BindType::ReusePort
                                      : ListenerComponentFactory::BindType::NoReusePort;
   }
+  ENVOY_LOG(debug, "listener '{}' to bind type: {}", listener.name(), bind_type);
   TRY_ASSERT_MAIN_THREAD {
     return std::make_unique<ListenSocketFactoryImpl>(
         factory_, listener.address(), socket_type, listener.listenSocketOptions(), listener.name(),

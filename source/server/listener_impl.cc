@@ -89,7 +89,7 @@ ListenSocketFactoryImpl::ListenSocketFactoryImpl(
       bind_type_ = ListenerComponentFactory::BindType::NoReusePort;
     }
   }
-
+  // createListenSocketAndApplyOptions 创建最终的 listener
   sockets_.push_back(createListenSocketAndApplyOptions(factory, socket_type, 0));
 
   if (sockets_[0] != nullptr && local_address_->ip() && local_address_->ip()->port() == 0) {
@@ -100,6 +100,8 @@ ListenSocketFactoryImpl::ListenSocketFactoryImpl(
 
   // Now create the remainder of the sockets that will be used by the rest of the workers.
   for (uint32_t i = 1; i < num_sockets; i++) {
+    // 区分是否使用了 SO_REUSEPORT，https://www.envoyproxy.io/docs/envoy/v1.20.0/api-v3/config/listener/v3/listener.proto
+    // 默认值 enable_reuse_port 为 true，但是内核版本有要求
     if (bind_type_ != ListenerComponentFactory::BindType::ReusePort && sockets_[0] != nullptr) {
       sockets_.push_back(sockets_[0]->duplicate());
     } else {
@@ -141,8 +143,8 @@ Network::SocketSharedPtr ListenSocketFactoryImpl::createListenSocketAndApplyOpti
       factory.createListenSocket(local_address_, socket_type, options_, bind_type_, worker_index);
 
   // Binding is done by now.
-  ENVOY_LOG(debug, "Create listen socket for listener {} on address {}", listener_name_,
-            local_address_->asString());
+  ENVOY_LOG(debug, "Create listen socket for listener {} on address {}, thread_id {}", listener_name_,
+            local_address_->asString(), std::this_thread::get_id());
   if (socket != nullptr && options_ != nullptr) {
     const bool ok = Network::Socket::applyOptions(
         options_, *socket, envoy::config::core::v3::SocketOption::STATE_BOUND);

@@ -244,7 +244,9 @@ class Filter : public Logger::Loggable<Logger::Id::filter>,
                public Filters::Common::ExtAuthz::RequestCallbacks {
 public:
   Filter(const FilterConfigSharedPtr& config, Filters::Common::ExtAuthz::ClientPtr&& client)
-      : config_(config), client_(std::move(client)), stats_(config->stats()) {}
+      : config_(config), client_(std::move(client)), stats_(config->stats()) {
+  ENVOY_LOG(debug, "construct ext_authz filter {}", static_cast<void*>(this));
+}
 
   // Http::StreamFilterBase
   void onDestroy() override;

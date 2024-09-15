@@ -84,6 +84,7 @@ public:
 
   void onSocketAccepted(std::unique_ptr<ActiveTcpSocket> active_socket) {
     // Create and run the filters
+    ENVOY_LOG(debug, "onSocketAccepted createListenerFilterChain with active socket");
     config_->filterChainFactory().createListenerFilterChain(*active_socket);
     active_socket->continueFilterChain(true);
 

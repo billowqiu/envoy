@@ -103,7 +103,9 @@ ConnectionManagerImpl::ConnectionManagerImpl(ConnectionManagerConfig& config,
           overload_state_.getState(Server::OverloadActionNames::get().DisableHttpKeepAlive)),
       time_source_(time_source),
       enable_internal_redirects_with_body_(Runtime::runtimeFeatureEnabled(
-          "envoy.reloadable_features.internal_redirects_with_body")) {}
+          "envoy.reloadable_features.internal_redirects_with_body")) {
+  ENVOY_LOG(debug, "construct http_connection_manager filter {}", static_cast<void*>(this));
+}
 
 const ResponseHeaderMap& ConnectionManagerImpl::continueHeader() {
   static const auto headers = createHeaderMap<ResponseHeaderMapImpl>(
@@ -322,6 +324,7 @@ void ConnectionManagerImpl::handleCodecError(absl::string_view error) {
 
 void ConnectionManagerImpl::createCodec(Buffer::Instance& data) {
   ASSERT(!codec_);
+  // 第三个参数this会一直带到具体的 codec 对象中，用于回调
   codec_ = config_.createCodec(read_callbacks_->connection(), data, *this);
 
   switch (codec_->protocol()) {
@@ -351,6 +354,7 @@ Network::FilterStatus ConnectionManagerImpl::onData(Buffer::Instance& data, bool
   do {
     redispatch = false;
 
+    // 回调 codec 
     const Status status = codec_->dispatch(data);
 
     if (isBufferFloodError(status) || isInboundFramesWithEmptyPayloadError(status)) {
@@ -614,7 +618,9 @@ ConnectionManagerImpl::ActiveStream::ActiveStream(ConnectionManagerImpl& connect
       filter_manager_(*this, connection_manager_.read_callbacks_->connection().dispatcher(),
                       connection_manager_.read_callbacks_->connection(), stream_id_,
                       std::move(account), connection_manager_.config_.proxy100Continue(),
-                      buffer_limit, connection_manager_.config_.filterFactory(),
+                      buffer_limit, 
+                      // 保存 HttpConnectionManagerConfig 的引用 FilterChainFactory& filterFactory() override { return *this; }
+                      connection_manager_.config_.filterFactory(),
                       connection_manager_.config_.localReply(),
                       connection_manager_.codec_->protocol(), connection_manager_.timeSource(),
                       connection_manager_.read_callbacks_->connection().streamInfo().filterState(),
@@ -1004,6 +1010,7 @@ void ConnectionManagerImpl::ActiveStream::decodeHeaders(RequestHeaderMapPtr&& he
   ASSERT(filter_manager_.streamInfo().downstreamAddressProvider().remoteAddress() != nullptr);
 
   ASSERT(!cached_route_);
+  // 刷路由缓存
   refreshCachedRoute();
 
   if (!state_.is_internally_created_) { // Only mutate tracing headers on first pass.
@@ -1015,6 +1022,8 @@ void ConnectionManagerImpl::ActiveStream::decodeHeaders(RequestHeaderMapPtr&& he
 
   filter_manager_.streamInfo().setRequestHeaders(*request_headers_);
 
+  // 构建 filter 链，调用完之后针对此 stream 的 filter 链就构建好了
+  ENVOY_STREAM_LOG(debug, "filter_manager createFilterChain", *this);
   const bool upgrade_rejected = filter_manager_.createFilterChain() == false;
 
   // TODO if there are no filters when starting a filter iteration, the connection manager
@@ -1063,7 +1072,7 @@ void ConnectionManagerImpl::ActiveStream::decodeHeaders(RequestHeaderMapPtr&& he
   if (connection_manager_.config_.tracingConfig()) {
     traceRequest();
   }
-
+  // 回调各个插件
   filter_manager_.decodeHeaders(*request_headers_, end_stream);
 
   // Reset it here for both global and overridden cases.
@@ -1281,8 +1290,11 @@ void ConnectionManagerImpl::ActiveStream::refreshCachedRoute(const Router::Route
       snapScopedRouteConfig();
     }
     if (snapped_route_config_ != nullptr) {
+      // 查找路由，根据配置的 route 规则查找当前请求匹配的规则，会调用到 RouteMatcher::route
       route = snapped_route_config_->route(cb, *request_headers_, filter_manager_.streamInfo(),
                                            stream_id_);
+    ENVOY_STREAM_LOG(debug, "refreshCachedRoute route cluster name {}", *this, 
+      route==nullptr?  "empty":route->routeEntry()->clusterName());                                      
     }
   }
 

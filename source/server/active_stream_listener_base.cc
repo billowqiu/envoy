@@ -39,8 +39,12 @@ void ActiveStreamListenerBase::newConnection(Network::ConnectionSocketPtr&& sock
     socket->close();
     return;
   }
+  ENVOY_LOG(debug, "find Filter chain {} from connection {}", filter_chain->name(), 
+    socket->connectionInfoProvider().remoteAddress()->asString());
   stream_info->setFilterChainName(filter_chain->name());
   auto transport_socket = filter_chain->transportSocketFactory().createTransportSocket(nullptr);
+
+  ENVOY_LOG(debug, "dispatcher createServerConnection from connection", filter_chain->name());
   auto server_conn_ptr = dispatcher().createServerConnection(
       std::move(socket), std::move(transport_socket), *stream_info);
   if (const auto timeout = filter_chain->transportSocketConnectTimeout();
@@ -50,6 +54,9 @@ void ActiveStreamListenerBase::newConnection(Network::ConnectionSocketPtr&& sock
   }
   server_conn_ptr->setBufferLimits(config_->perConnectionBufferLimitBytes());
   RELEASE_ASSERT(server_conn_ptr->connectionInfoProvider().remoteAddress() != nullptr, "");
+  ENVOY_CONN_LOG(debug, "createNetworkFilterChain with this serverConnection  {}", *server_conn_ptr,
+                   server_conn_ptr->connectionInfoProvider().remoteAddress()->asString());
+
   const bool empty_filter_chain = !config_->filterChainFactory().createNetworkFilterChain(
       *server_conn_ptr, filter_chain->networkFilterFactories());
   if (empty_filter_chain) {
@@ -120,6 +127,7 @@ void OwnedActiveStreamListenerBase::removeConnection(ActiveTcpConnection& connec
   ENVOY_CONN_LOG(debug, "adding to cleanup list", *connection.connection_);
   ActiveConnections& active_connections = connection.active_connections_;
   ActiveConnectionPtr removed = connection.removeFromList(active_connections.connections_);
+  // 延迟销毁链接对象
   dispatcher().deferredDelete(std::move(removed));
   // Delete map entry only iff connections becomes empty.
   if (active_connections.connections_.empty()) {

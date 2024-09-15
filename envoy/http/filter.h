@@ -323,6 +323,7 @@ using RouteConfigUpdatedCallbackSharedPtr = std::shared_ptr<RouteConfigUpdatedCa
  * Stream decoder filter callbacks add additional callbacks that allow a decoding filter to restart
  * decoding if they decide to hold data (e.g. for buffering or rate limiting).
  */
+// 目前有两个实现分别是： AsyncStreamImpl（async_client_impl.h） 和 ActiveStreamDecoderFilter (filter_manager.h)
 class StreamDecoderFilterCallbacks : public virtual StreamFilterCallbacks {
 public:
   /**
@@ -743,6 +744,7 @@ using StreamDecoderFilterSharedPtr = std::shared_ptr<StreamDecoderFilter>;
  * Stream encoder filter callbacks add additional callbacks that allow a encoding filter to restart
  * encoding if they decide to hold data (e.g. for buffering or rate limiting).
  */
+// 目前就一个实现 ActiveStreamEncoderFilter
 class StreamEncoderFilterCallbacks : public virtual StreamFilterCallbacks {
 public:
   /**
@@ -990,6 +992,7 @@ public:
  * These callbacks are provided by the connection manager to the factory so that the factory can
  * build the filter chain in an application specific way.
  */
+// 这里一个典型的实现就是 FilterManager
 class FilterChainFactoryCallbacks {
 public:
   virtual ~FilterChainFactoryCallbacks() = default;
@@ -1059,6 +1062,7 @@ public:
  * function will install a single filter, but it's technically possibly to install more than one
  * if desired.
  */
+// 这些创建 filter 的回调函数对象，在初始化的时候就会被设置好，实际使用是在一个 http stream 新构建出来之后才会真正来调用，以便构造出来实际的 filter 来处理这些stream
 using FilterFactoryCb = std::function<void(FilterChainFactoryCallbacks& callbacks)>;
 
 /**

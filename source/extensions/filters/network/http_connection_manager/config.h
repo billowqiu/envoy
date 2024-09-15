@@ -144,7 +144,9 @@ public:
                                         Http::ServerConnectionCallbacks& callbacks) override;
   Http::DateProvider& dateProvider() override { return date_provider_; }
   std::chrono::milliseconds drainTimeout() const override { return drain_timeout_; }
-  FilterChainFactory& filterFactory() override { return *this; }
+
+  FilterChainFactory& filterFactory() override { return *this; } // 返回自身引用
+
   bool generateRequestId() const override { return generate_request_id_; }
   bool preserveExternalRequestId() const override { return preserve_external_request_id_; }
   bool alwaysSetRequestIdInResponse() const override { return always_set_request_id_in_response_; }

@@ -45,6 +45,7 @@ WorkerImpl::WorkerImpl(ThreadLocal::Instance& tls, ListenerHooks& hooks,
 void WorkerImpl::addListener(absl::optional<uint64_t> overridden_listener,
                              Network::ListenerConfig& listener, AddListenerCompletion completion) {
   dispatcher_->post([this, overridden_listener, &listener, completion]() -> void {
+    // ConnectionHandlerImpl::addListener
     handler_->addListener(overridden_listener, listener);
     hooks_.onWorkerListenerAdded();
     completion();

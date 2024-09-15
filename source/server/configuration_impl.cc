@@ -31,7 +31,9 @@ namespace Configuration {
 
 bool FilterChainUtility::buildFilterChain(Network::FilterManager& filter_manager,
                                           const std::vector<Network::FilterFactoryCb>& factories) {
+  ENVOY_LOG(debug, "buildFilterChain with network filter factories");
   for (const Network::FilterFactoryCb& factory : factories) {
+    ENVOY_LOG(debug, "call FilterFactoryCb factory");
     factory(filter_manager);
   }
 
@@ -41,7 +43,9 @@ bool FilterChainUtility::buildFilterChain(Network::FilterManager& filter_manager
 bool FilterChainUtility::buildFilterChain(
     Network::ListenerFilterManager& filter_manager,
     const std::vector<Network::ListenerFilterFactoryCb>& factories) {
+  ENVOY_LOG(info, "buildFilterChain with listener filter factories");
   for (const Network::ListenerFilterFactoryCb& factory : factories) {
+    ENVOY_LOG(debug, "call ListenerFilterFactoryCb factory");
     factory(filter_manager);
   }
 
@@ -94,6 +98,7 @@ void MainImpl::initialize(const envoy::config::bootstrap::v3::Bootstrap& bootstr
   cluster_manager_ = cluster_manager_factory.clusterManagerFromProto(bootstrap);
 
   const auto& listeners = bootstrap.static_resources().listeners();
+  // 静态配置 listener，初始化
   ENVOY_LOG(info, "loading {} listener(s)", listeners.size());
   for (ssize_t i = 0; i < listeners.size(); i++) {
     ENVOY_LOG(debug, "listener #{}:", i);

@@ -335,7 +335,7 @@ void ConnectionImpl::onRead(uint64_t read_buffer_size) {
     }
     read_end_stream_raised_ = true;
   }
-
+  // 调用 filter 的读回调
   filter_manager_.onRead();
 }
 
@@ -795,7 +795,9 @@ ServerConnectionImpl::ServerConnectionImpl(Event::Dispatcher& dispatcher,
                                            TransportSocketPtr&& transport_socket,
                                            StreamInfo::StreamInfo& stream_info, bool connected)
     : ConnectionImpl(dispatcher, std::move(socket), std::move(transport_socket), stream_info,
-                     connected) {}
+                     connected) {
+    ENVOY_LOG(debug, "construct network ServerConnectionImpl {}", static_cast<void*>(this));
+}
 
 void ServerConnectionImpl::setTransportSocketConnectTimeout(std::chrono::milliseconds timeout,
                                                             Stats::Counter& timeout_stat) {
@@ -836,7 +838,9 @@ ClientConnectionImpl::ClientConnectionImpl(
     Network::TransportSocketPtr&& transport_socket,
     const Network::ConnectionSocket::OptionsSharedPtr& options)
     : ClientConnectionImpl(dispatcher, std::make_unique<ClientSocketImpl>(remote_address, options),
-                           source_address, std::move(transport_socket), options) {}
+                           source_address, std::move(transport_socket), options) {
+    ENVOY_LOG(debug, "construct network ClientConnectionImpl {}", static_cast<void*>(this));                            
+}
 
 ClientConnectionImpl::ClientConnectionImpl(
     Event::Dispatcher& dispatcher, std::unique_ptr<ConnectionSocket> socket,

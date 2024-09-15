@@ -97,6 +97,7 @@ void ActiveTcpListener::onAcceptWorker(Network::ConnectionSocketPtr&& socket,
   if (!rebalanced) {
     Network::BalancedConnectionHandler& target_handler =
         config_->connectionBalancer().pickTargetHandler(*this);
+    // 均衡之后，如果链接处理的 handler 不是当前 worker，则转发到对应 worker 线程，再次回到本函数，但是 rebalanced 会为 true，以防止循环
     if (&target_handler != this) {
       target_handler.post(std::move(socket));
       return;

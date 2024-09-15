@@ -572,6 +572,7 @@ HttpConnectionManagerConfig::HttpConnectionManagerConfig(
     throw EnvoyException("Non-HTTP/3 codec configured on QUIC listener.");
   }
 
+  // 根据配置的 http filters 依次处理
   const auto& filters = config.http_filters();
   DependencyManager dependency_manager;
   for (int32_t i = 0; i < filters.size(); i++) {
@@ -643,6 +644,7 @@ void HttpConnectionManagerConfig::processFilter(
   }
   ProtobufTypes::MessagePtr message = Config::Utility::translateToFactoryConfig(
       proto_config, context_.messageValidationVisitor(), *factory);
+  // 这里回调方法就是每个 filter 里面需要实现的工厂回调，factory 指向FactoryBase
   Http::FilterFactoryCb callback =
       factory->createFilterFactoryFromProto(*message, stats_prefix_, context_);
   dependency_manager.registerFilter(factory->name(), *factory->dependencies());
@@ -688,6 +690,7 @@ Http::ServerConnectionPtr
 HttpConnectionManagerConfig::createCodec(Network::Connection& connection,
                                          const Buffer::Instance& data,
                                          Http::ServerConnectionCallbacks& callbacks) {
+  // 根据不同的协议类型，创建对应 codec                                          
   switch (codec_type_) {
   case CodecType::HTTP1: {
     return std::make_unique<Http::Http1::ServerConnectionImpl>(
@@ -712,6 +715,7 @@ HttpConnectionManagerConfig::createCodec(Network::Connection& connection,
     // Should be blocked by configuration checking at an earlier point.
     NOT_REACHED_GCOVR_EXCL_LINE;
 #endif
+  // 默认一般都选的这个
   case CodecType::AUTO:
     return Http::ConnectionManagerUtility::autoCreateCodec(
         connection, data, callbacks, context_.scope(), context_.api().randomGenerator(),
@@ -724,9 +728,11 @@ HttpConnectionManagerConfig::createCodec(Network::Connection& connection,
 void HttpConnectionManagerConfig::createFilterChainForFactories(
     Http::FilterChainFactoryCallbacks& callbacks, const FilterFactoriesList& filter_factories) {
   bool added_missing_config_filter = false;
+  // callbacks 实际是FilterManager
   for (const auto& filter_config_provider : filter_factories) {
     auto config = filter_config_provider->config();
     if (config.has_value()) {
+      ENVOY_LOG(trace, "filter config create filter {}", filter_config_provider->name());
       config.value()(callbacks);
       continue;
     }

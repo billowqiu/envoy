@@ -965,7 +965,9 @@ ServerConnectionImpl::ServerConnectionImpl(
       // maintainer team as it will otherwise be removed entirely soon.
       max_outbound_responses_(
           Runtime::getInteger("envoy.do_not_use_going_away_max_http2_outbound_responses", 2)),
-      headers_with_underscores_action_(headers_with_underscores_action) {}
+      headers_with_underscores_action_(headers_with_underscores_action) {
+  ENVOY_LOG(debug, "construct http1 codec ServerConnectionImpl {}", static_cast<void*>(this));
+}
 
 uint32_t ServerConnectionImpl::getHeadersSize() {
   // Add in the size of the request URL if processing request headers.
@@ -1121,6 +1123,7 @@ Status ServerConnectionImpl::onMessageBeginBase() {
     if (resetStreamCalled()) {
       return codecClientError("cannot create new streams after calling reset");
     }
+    // 开启一个新的 stream，回调 ConnectionManagerImpl
     active_request.request_decoder_ = &callbacks_.newStream(active_request.response_encoder_);
 
     // Check for pipelined request flood as we prepare to accept a new request.
@@ -1151,6 +1154,7 @@ void ServerConnectionImpl::onBody(Buffer::Instance& data) {
 
 ParserStatus ServerConnectionImpl::onMessageCompleteBase() {
   ASSERT(!handling_upgrade_);
+  ENVOY_CONN_LOG(trace, "ServerConnectionImpl message complete", connection_);
   if (active_request_.has_value()) {
     auto& active_request = active_request_.value();
 
@@ -1159,6 +1163,8 @@ ParserStatus ServerConnectionImpl::onMessageCompleteBase() {
     }
     active_request.remote_complete_ = true;
     if (deferred_end_stream_headers_) {
+      ENVOY_CONN_LOG(trace, "ServerConnectionImpl decodeHeaders callback", connection_);
+      // ConnectionManagerImpl::ActiveStream::decodeHeaders
       active_request.request_decoder_->decodeHeaders(
           std::move(absl::get<RequestHeaderMapPtr>(headers_or_trailers_)), true);
       deferred_end_stream_headers_ = false;
@@ -1251,7 +1257,9 @@ ClientConnectionImpl::ClientConnectionImpl(Network::Connection& connection, Code
                                            ConnectionCallbacks&, const Http1Settings& settings,
                                            const uint32_t max_response_headers_count)
     : ConnectionImpl(connection, stats, settings, MessageType::Response, MAX_RESPONSE_HEADERS_KB,
-                     max_response_headers_count) {}
+                     max_response_headers_count) {
+  ENVOY_LOG(debug, "construct http1 codec ClientConnectionImpl {}", static_cast<void*>(this));
+}
 
 bool ClientConnectionImpl::cannotHaveBody() {
   if (pending_response_.has_value() && pending_response_.value().encoder_.headRequest()) {
@@ -1362,7 +1370,7 @@ void ClientConnectionImpl::onBody(Buffer::Instance& data) {
 }
 
 ParserStatus ClientConnectionImpl::onMessageCompleteBase() {
-  ENVOY_CONN_LOG(trace, "message complete", connection_);
+  ENVOY_CONN_LOG(trace, "ClientConnectionImpl message complete", connection_);
   if (ignore_message_complete_for_1xx_) {
     ignore_message_complete_for_1xx_ = false;
     return ParserStatus::Success;

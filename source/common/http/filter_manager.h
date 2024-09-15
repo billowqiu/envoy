@@ -287,6 +287,9 @@ struct ActiveStreamDecoderFilter : public ActiveStreamFilterBase,
   // called here may change the content type, so we must check it before the call.
   FilterHeadersStatus decodeHeaders(RequestHeaderMap& headers, bool end_stream) {
     is_grpc_request_ = Grpc::Common::isGrpcRequestHeaders(headers);
+    ENVOY_STREAM_LOG(trace,
+                       "call decodeHeaders in real filter={}",
+                       *this, static_cast<const void*>(handle_.get()));
     FilterHeadersStatus status = handle_->decodeHeaders(headers, end_stream);
     return status;
   }
@@ -687,6 +690,8 @@ public:
   }
 
   // Http::FilterChainFactoryCallbacks
+  // envoy 里面搞了太多继承用法，幸好是注释还是有一些，比如下面这些方法都是实现了FilterChainFactoryCallbacks这个接口，用于构造 filter chain
+  // 这些方法一般都是在 filter 的 config 的工厂方法里面调用，这些 filter 也是在那里被 make 出来的
   Event::Dispatcher& dispatcher() override { return dispatcher_; }
   void addStreamDecoderFilter(StreamDecoderFilterSharedPtr filter) override {
     addStreamDecoderFilterWorker(filter, nullptr, false);
@@ -723,6 +728,7 @@ public:
     addStreamEncoderFilterWorker(filter, nullptr, false);
   }
   void addStreamFilter(StreamFilterSharedPtr filter) override {
+    // 添加 filter 到 chain，包括 decoder 和 encode 两个方向的
     addStreamDecoderFilterWorker(filter, nullptr, true);
     addStreamEncoderFilterWorker(filter, nullptr, true);
     StreamDecoderFilter* decoder_filter = filter.get();
@@ -1009,6 +1015,7 @@ private:
   Buffer::BufferMemoryAccountSharedPtr account_;
   const bool proxy_100_continue_;
 
+  // decoder 和 encoder 的 filter 链
   std::list<ActiveStreamDecoderFilterPtr> decoder_filters_;
   std::list<ActiveStreamEncoderFilterPtr> encoder_filters_;
   std::list<StreamFilterBase*> filters_;

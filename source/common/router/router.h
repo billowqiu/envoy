@@ -303,7 +303,9 @@ public:
   Filter(FilterConfig& config)
       : config_(config), final_upstream_request_(nullptr),
         downstream_100_continue_headers_encoded_(false), downstream_response_started_(false),
-        downstream_end_stream_(false), is_retry_(false), request_buffer_overflowed_(false) {}
+        downstream_end_stream_(false), is_retry_(false), request_buffer_overflowed_(false) {
+    ENVOY_LOG(debug, "construct router filter {}", static_cast<void*>(this));
+}
 
   ~Filter() override;
 

@@ -470,6 +470,7 @@ void FilterManager::addStreamDecoderFilterWorker(StreamDecoderFilterSharedPtr fi
   //     - B
   //     - C
   // The decoder filter chain will iterate through filters A, B, C.
+  // 按照定义的顺序从上到下依次调用
   LinkedList::moveIntoListBack(std::move(wrapper), decoder_filters_);
 }
 
@@ -519,7 +520,11 @@ void FilterManager::decodeHeaders(ActiveStreamDecoderFilter* filter, RequestHead
       commonDecodePrefix(filter, FilterIterationStartState::AlwaysStartFromNext);
   std::list<ActiveStreamDecoderFilterPtr>::iterator continue_data_entry = decoder_filters_.end();
 
+  // 开始回调各个 filter 
   for (; entry != decoder_filters_.end(); entry++) {
+    ENVOY_STREAM_LOG(trace,
+                      "decodeHeaders filter iteration filter={}",
+                      *this, static_cast<const void*>((*entry).get()));
     (*entry)->maybeEvaluateMatchTreeWithNewData(
         [&](auto& matching_data) { matching_data.onRequestHeaders(headers); });
 
@@ -620,6 +625,9 @@ void FilterManager::decodeData(ActiveStreamDecoderFilter* filter, Buffer::Instan
       commonDecodePrefix(filter, filter_iteration_start_state);
 
   for (; entry != decoder_filters_.end(); entry++) {
+    ENVOY_STREAM_LOG(trace,
+                  "decodeData filter iteration filter={}",
+                  *this, static_cast<const void*>((*entry).get()));
     if ((*entry)->skipFilter()) {
       continue;
     }
@@ -766,6 +774,9 @@ void FilterManager::decodeTrailers(ActiveStreamDecoderFilter* filter, RequestTra
       commonDecodePrefix(filter, FilterIterationStartState::CanStartFromCurrent);
 
   for (; entry != decoder_filters_.end(); entry++) {
+    ENVOY_STREAM_LOG(trace,
+                  "addDecodedMetadata filter iteration filter={}",
+                  *this, static_cast<const void*>((*entry).get()));
     (*entry)->maybeEvaluateMatchTreeWithNewData(
         [&](auto& matching_data) { matching_data.onRequestTrailers(trailers); });
 
@@ -807,6 +818,9 @@ void FilterManager::decodeMetadata(ActiveStreamDecoderFilter* filter, MetadataMa
       commonDecodePrefix(filter, FilterIterationStartState::CanStartFromCurrent);
 
   for (; entry != decoder_filters_.end(); entry++) {
+    ENVOY_STREAM_LOG(trace,
+                  "decodeMetadata filter iteration filter={}",
+                  *this, static_cast<const void*>((*entry).get()));
     if ((*entry)->skipFilter()) {
       continue;
     }
@@ -1425,7 +1439,7 @@ bool FilterManager::createFilterChain() {
       // will send a local reply indicating that the upgrade failed.
     }
   }
-
+  // filter_chain_factory_ 是 HttpConnectionManagerConfig，相当于调用到 HttpConnectionManagerConfig::createFilterChain
   filter_chain_factory_.createFilterChain(*this);
   return !upgrade_rejected;
 }

@@ -68,6 +68,7 @@ Http::FilterFactoryCb ExtAuthzFilterConfig::createFilterFactoryFromProtoTyped(
               grpc_service, context.scope(), true, Grpc::CacheOption::AlwaysCache);
       auto client = std::make_unique<Filters::Common::ExtAuthz::GrpcClientImpl>(
           raw_client, std::chrono::milliseconds(timeout_ms));
+      // 将 make 出来的 filter 添加到 FilterManager 的链中，这里的 callbacks 实则是 FilterManager 的引用，在回调的时候传递进来
       callbacks.addStreamFilter(std::make_shared<Filter>(filter_config, std::move(client)));
     };
   }

@@ -318,6 +318,7 @@ Network::ClientConnectionPtr HostImpl::createConnection(
     connection_options = options;
   }
   ASSERT(!address->envoyInternalAddress());
+  ENVOY_LOG(debug, "upstream will createClientConnection address_list size {}", address_list.size());
   Network::ClientConnectionPtr connection =
       address_list.size() > 1
           ? std::make_unique<Network::HappyEyeballsConnectionImpl>(

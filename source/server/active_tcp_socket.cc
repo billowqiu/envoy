@@ -80,6 +80,7 @@ void ActiveTcpSocket::continueFilterChain(bool success) {
     }
 
     for (; iter_ != accept_filters_.end(); iter_++) {
+      ENVOY_LOG(debug, "call onAccept with accept filter {}", static_cast<void*>((*iter_).get()));
       Network::FilterStatus status = (*iter_)->onAccept(*this);
       if (status == Network::FilterStatus::StopIteration) {
         // The filter is responsible for calling us again at a later time to continue the filter
@@ -96,6 +97,7 @@ void ActiveTcpSocket::continueFilterChain(bool success) {
     }
     // Successfully ran all the accept filters.
     if (no_error) {
+      ENVOY_LOG(debug, "newConnection");
       newConnection();
     } else {
       // Signal the caller that no extra filter chain iteration is needed.
@@ -123,6 +125,7 @@ void ActiveTcpSocket::newConnection() {
   if (hand_off_restored_destination_connections_ &&
       socket_->connectionInfoProvider().localAddressRestored()) {
     // Find a listener associated with the original destination address.
+    // 寻找 dnat 之前实际应该处理该链接的 listener
     new_listener =
         listener_.getBalancedHandlerByAddress(*socket_->connectionInfoProvider().localAddress());
   }
@@ -134,6 +137,7 @@ void ActiveTcpSocket::newConnection() {
     // Note also that we must account for the number of connections properly across both listeners.
     // TODO(mattklein123): See note in ~ActiveTcpSocket() related to making this accounting better.
     listener_.decNumConnections();
+    ENVOY_LOG(debug, "onAcceptWorker with new_listener");
     new_listener.value().get().onAcceptWorker(std::move(socket_), false, false);
   } else {
     // Set default transport protocol if none of the listener filters did it.
@@ -145,6 +149,8 @@ void ActiveTcpSocket::newConnection() {
     socket_->ioHandle().resetFileEvents();
     accept_filters_.clear();
     // Create a new connection on this listener.
+    // gateway 模式会走到这里
+    ENVOY_LOG(debug, "newConnection with origin listener");
     listener_.newConnection(std::move(socket_), std::move(stream_info_));
   }
 }

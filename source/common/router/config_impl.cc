@@ -1529,6 +1529,7 @@ const VirtualHostImpl* RouteMatcher::findVirtualHost(const Http::RequestHeaderMa
   if (iter != virtual_hosts_.end()) {
     return iter->second.get();
   }
+  // 后缀通配路由查找
   if (!wildcard_virtual_host_suffixes_.empty()) {
     const VirtualHostImpl* vhost = findWildcardVirtualHost(
         host, wildcard_virtual_host_suffixes_,
@@ -1537,6 +1538,7 @@ const VirtualHostImpl* RouteMatcher::findVirtualHost(const Http::RequestHeaderMa
       return vhost;
     }
   }
+  // 后缀通配路由查找
   if (!wildcard_virtual_host_prefixes_.empty()) {
     const VirtualHostImpl* vhost = findWildcardVirtualHost(
         host, wildcard_virtual_host_prefixes_,
