@@ -49,31 +49,37 @@ static_resources:
             route_config:
               name: local_route
               virtual_hosts:
+              - name: httpbin
+                domains:
+                #curl -v -H "Host: httpbin.org" 127.0.0.1:8000/uuid
+                - "httpbin.org"
+                routes:
+                - match:
+                    prefix: "/"
+                  route:
+                    cluster: httpbin
+          
               - name: upstream
                 domains:
                 - "*"
                 routes:
                 - match:
-                    prefix: "/httpbin"
-                  route:
-                    cluster: httpbin                
-                - match:
                     prefix: "/"
                   route:
                     cluster: upstream-service
-
             http_filters:
-            # - name: envoy.filters.http.ext_authz
-            #   typed_config:
-            #     "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthz
-            #     grpc_service:
-            #       envoy_grpc:
-            #         cluster_name: ext_authz-grpc-service
-            #       timeout: 0.250s
-            #     transport_api_version: V3
-                
-            - name: envoy.filters.http.router
+            - name: envoy.filters.http.ext_authz
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthz
+                grpc_service:
+                  envoy_grpc:
+                    cluster_name: ext_authz-grpc-service
+                  timeout: 0.250s
+                transport_api_version: V3
 
+            - name: envoy.filters.http.router
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
   clusters:
   - name: upstream-service
     connect_timeout: 0.25s
@@ -91,6 +97,7 @@ static_resources:
   - name: httpbin
     connect_timeout: 5000s
     type: strict_dns
+    dns_refresh_rate: 60s
     lb_policy: round_robin
     load_assignment:
       cluster_name: httpbin
@@ -101,18 +108,6 @@ static_resources:
                   socket_address:
                     address: httpbin.org
                     port_value: 80
-  # - name: upstream-service
-  #   type: STRICT_DNS
-  #   lb_policy: ROUND_ROBIN
-  #   load_assignment:
-  #     cluster_name: upstream-service
-  #     endpoints:
-  #     - lb_endpoints:
-  #       - endpoint:
-  #           address:
-  #             socket_address:
-  #               address: upstream-service
-  #               port_value: 8080
 
   - name: ext_authz-grpc-service
     type: STATIC
@@ -135,4 +130,4 @@ static_resources:
             address:
               socket_address:
                 address: 9.134.189.148
-                port_value: 9001                
+                port_value: 9001
