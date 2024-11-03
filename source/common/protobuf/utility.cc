@@ -727,6 +727,7 @@ void redact(Protobuf::Message* message, bool ancestor_is_sensitive) {
 } // namespace
 
 void MessageUtil::redact(Protobuf::Message& message) {
+  return;
   ::Envoy::redact(&message, /* ancestor_is_sensitive = */ false);
 }
 
