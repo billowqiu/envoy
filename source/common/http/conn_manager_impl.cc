@@ -1293,9 +1293,15 @@ void ConnectionManagerImpl::ActiveStream::refreshCachedRoute(const Router::Route
       // 查找路由，根据配置的 route 规则查找当前请求匹配的规则，会调用到 RouteMatcher::route
       route = snapped_route_config_->route(cb, *request_headers_, filter_manager_.streamInfo(),
                                            stream_id_);
-    ENVOY_STREAM_LOG(debug, "refreshCachedRoute route cluster name {}", *this, 
-      route==nullptr?  "empty":route->routeEntry()->clusterName());                                      
+      if (!route) {
+        ENVOY_STREAM_LOG(debug, "refreshCachedRoute empty route", *this);
+      } else if (route->routeEntry()) {
+        ENVOY_STREAM_LOG(debug, "refreshCachedRoute route cluster name: {}, route name: {}", *this, route->routeEntry()->clusterName(), route->routeEntry()->routeName());
+      } else {
+          ENVOY_STREAM_LOG(debug, "refreshCachedRoute has route, but entry empty", *this);
+      }
     }
+
   }
 
   setRoute(route);

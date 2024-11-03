@@ -77,6 +77,7 @@ bool FilterConfig::enforced() const {
 }
 
 Http::FilterHeadersStatus Filter::decodeHeaders(Http::RequestHeaderMap& headers, bool) {
+  ENVOY_LOG(debug, "local_ratelimit decodeHeaders");
   const auto* config = getConfig();
 
   if (!config->enabled()) {
@@ -116,6 +117,7 @@ Http::FilterHeadersStatus Filter::decodeHeaders(Http::RequestHeaderMap& headers,
 }
 
 bool Filter::requestAllowed(absl::Span<const RateLimit::LocalDescriptor> request_descriptors) {
+  ENVOY_LOG(debug, "local_ratelimit requestAllowed with request_descriptors");
   const auto* config = getConfig();
   return config->rateLimitPerConnection()
              ? getPerConnectionRateLimiter().requestAllowed(request_descriptors)

@@ -160,7 +160,7 @@ void GrpcMuxImpl::onDiscoveryResponse(
     std::unique_ptr<envoy::service::discovery::v3::DiscoveryResponse>&& message,
     ControlPlaneStats& control_plane_stats) {
   const std::string type_url = message->type_url();
-  ENVOY_LOG(debug, "Received gRPC message for {} at version {}", type_url, message->version_info());
+  ENVOY_LOG(debug, "Received gRPC message for {} at version {}, resp {}", type_url, message->version_info(), message->DebugString());
   if (api_state_.count(type_url) == 0) {
     // TODO(yuval-k): This should never happen. consider dropping the stream as this is a
     // protocol violation

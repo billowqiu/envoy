@@ -127,9 +127,11 @@ using FilterConfigSharedPtr = std::shared_ptr<FilterConfig>;
  * HTTP local rate limit filter. Depending on the route configuration, this filter calls consults
  * with local token bucket before allowing further filter iteration.
  */
-class Filter : public Http::PassThroughFilter {
+class Filter : public Logger::Loggable<Logger::Id::filter>, public Http::PassThroughFilter {
 public:
-  Filter(FilterConfigSharedPtr config) : config_(config) {}
+  Filter(FilterConfigSharedPtr config) : config_(config) {
+    ENVOY_LOG(debug, "construct local_ratelimit filter {}", static_cast<void*>(this));
+  }
 
   // Http::StreamDecoderFilter
   Http::FilterHeadersStatus decodeHeaders(Http::RequestHeaderMap& headers,
