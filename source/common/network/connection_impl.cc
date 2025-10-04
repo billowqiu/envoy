@@ -100,6 +100,8 @@ ConnectionImpl::ConnectionImpl(Event::Dispatcher& dispatcher, ConnectionSocketPt
   // then we don't need a setter or any of the optional stuff.
   socket_->connectionInfoProvider().setConnectionID(id());
   socket_->connectionInfoProvider().setSslConnection(transport_socket_->ssl());
+
+  ENVOY_CONN_LOG(debug, "construct network ConnectionImpl {}", *this, static_cast<void*>(this));      
 }
 
 ConnectionImpl::~ConnectionImpl() {
@@ -111,19 +113,26 @@ ConnectionImpl::~ConnectionImpl() {
   // deletion). Hence the assert above. However, call close() here just to be completely sure that
   // the fd is closed and make it more likely that we crash from a bad close callback.
   close(ConnectionCloseType::NoFlush);
+  ENVOY_CONN_LOG(debug, "destroy network ConnectionImpl {}", *this, static_cast<void*>(this));
 }
 
 void ConnectionImpl::addWriteFilter(WriteFilterSharedPtr filter) {
+  ENVOY_CONN_LOG(debug, "ConnectionImpl addWriteFilter {}", *this, typeid(filter.get()).name());
   filter_manager_.addWriteFilter(filter);
 }
 
-void ConnectionImpl::addFilter(FilterSharedPtr filter) { filter_manager_.addFilter(filter); }
+void ConnectionImpl::addFilter(FilterSharedPtr filter) { 
+  ENVOY_CONN_LOG(debug, "ConnectionImpl addWrite/ReadFilter {}", *this, typeid(filter.get()).name());
+  filter_manager_.addFilter(filter); 
+}
 
 void ConnectionImpl::addReadFilter(ReadFilterSharedPtr filter) {
+  ENVOY_CONN_LOG(debug, "ConnectionImpl addReadFilter {}", *this, typeid(filter.get()).name());
   filter_manager_.addReadFilter(filter);
 }
 
 void ConnectionImpl::removeReadFilter(ReadFilterSharedPtr filter) {
+  ENVOY_CONN_LOG(debug, "ConnectionImpl removeReadFilter {}", *this, typeid(filter.get()).name());
   filter_manager_.removeReadFilter(filter);
 }
 
@@ -336,6 +345,7 @@ void ConnectionImpl::onRead(uint64_t read_buffer_size) {
     read_end_stream_raised_ = true;
   }
   // 调用 filter 的读回调
+  ENVOY_CONN_LOG(trace, "forward to call filter_manager onRead", *this);
   filter_manager_.onRead();
 }
 
@@ -464,6 +474,7 @@ void ConnectionImpl::write(Buffer::Instance& data, bool end_stream, bool through
     //       support buffer/restart/continue on the write path this needs to get more complicated.
     current_write_buffer_ = &data;
     current_write_end_stream_ = end_stream;
+    ENVOY_CONN_LOG(trace, "forward to call filter_manager onWrite", *this);
     FilterStatus status = filter_manager_.onWrite();
     current_write_buffer_ = nullptr;
 
@@ -615,6 +626,7 @@ void ConnectionImpl::onReadReady() {
   // reading from the transport if the read buffer is above high watermark at the start of the
   // method.
   transport_wants_read_ = false;
+  // 调用 socket 的 read 去读取数据放到 buffer 中
   IoResult result = transport_socket_->doRead(*read_buffer_);
   uint64_t new_buffer_size = read_buffer_->length();
   updateReadBufferStats(result.bytes_processed_, new_buffer_size);
@@ -796,7 +808,7 @@ ServerConnectionImpl::ServerConnectionImpl(Event::Dispatcher& dispatcher,
                                            StreamInfo::StreamInfo& stream_info, bool connected)
     : ConnectionImpl(dispatcher, std::move(socket), std::move(transport_socket), stream_info,
                      connected) {
-    ENVOY_LOG(debug, "construct network ServerConnectionImpl {}", static_cast<void*>(this));
+  ENVOY_CONN_LOG(debug, "construct network ServerConnectionImpl {}", *this, static_cast<void*>(this));
 }
 
 void ServerConnectionImpl::setTransportSocketConnectTimeout(std::chrono::milliseconds timeout,
@@ -839,7 +851,7 @@ ClientConnectionImpl::ClientConnectionImpl(
     const Network::ConnectionSocket::OptionsSharedPtr& options)
     : ClientConnectionImpl(dispatcher, std::make_unique<ClientSocketImpl>(remote_address, options),
                            source_address, std::move(transport_socket), options) {
-    ENVOY_LOG(debug, "construct network ClientConnectionImpl {}", static_cast<void*>(this));                            
+    ENVOY_CONN_LOG(debug, "construct network ClientConnectionImpl {}", *this, static_cast<void*>(this));                            
 }
 
 ClientConnectionImpl::ClientConnectionImpl(

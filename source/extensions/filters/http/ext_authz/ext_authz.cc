@@ -119,6 +119,7 @@ Http::FilterHeadersStatus Filter::decodeHeaders(Http::RequestHeaderMap& headers,
 }
 
 Http::FilterDataStatus Filter::decodeData(Buffer::Instance& data, bool end_stream) {
+  ENVOY_STREAM_LOG(debug, "ext_authz filter decodeData {}", *decoder_callbacks_, static_cast<void*>(this));
   if (buffer_data_ && !skip_check_) {
     const bool buffer_is_full = isBufferFull();
     if (end_stream || buffer_is_full) {
@@ -141,6 +142,7 @@ Http::FilterDataStatus Filter::decodeData(Buffer::Instance& data, bool end_strea
 }
 
 Http::FilterTrailersStatus Filter::decodeTrailers(Http::RequestTrailerMap&) {
+  ENVOY_STREAM_LOG(debug, "ext_authz filter decodeTrailers {}", *decoder_callbacks_, static_cast<void*>(this));
   if (buffer_data_ && !skip_check_) {
     if (filter_return_ != FilterReturn::StopDecoding) {
       ENVOY_STREAM_LOG(debug, "ext_authz filter finished buffering the request",
@@ -155,14 +157,17 @@ Http::FilterTrailersStatus Filter::decodeTrailers(Http::RequestTrailerMap&) {
 }
 
 Http::FilterHeadersStatus Filter::encode100ContinueHeaders(Http::ResponseHeaderMap&) {
+  ENVOY_STREAM_LOG(debug, "ext_authz filter decodeTrailers {}", *decoder_callbacks_, static_cast<void*>(this));
   return Http::FilterHeadersStatus::Continue;
 }
 
 Http::FilterHeadersStatus Filter::encodeHeaders(Http::ResponseHeaderMap& headers, bool) {
+  ENVOY_STREAM_LOG(debug, "ext_authz filter encodeHeaders {}", *decoder_callbacks_, static_cast<void*>(this));
   ENVOY_STREAM_LOG(trace,
                    "ext_authz filter has {} response header(s) to add and {} response header(s) to "
                    "set to the encoded response:",
-                   *encoder_callbacks_, response_headers_to_add_.size());
+                   *encoder_callbacks_, response_headers_to_add_.size(),
+                   response_headers_to_set_.size());
   if (!response_headers_to_add_.empty()) {
     ENVOY_STREAM_LOG(
         trace, "ext_authz filter added header(s) to the encoded response:", *encoder_callbacks_);
@@ -184,14 +189,17 @@ Http::FilterHeadersStatus Filter::encodeHeaders(Http::ResponseHeaderMap& headers
 }
 
 Http::FilterDataStatus Filter::encodeData(Buffer::Instance&, bool) {
+  ENVOY_STREAM_LOG(debug, "ext_authz filter encodeData {}", *decoder_callbacks_, static_cast<void*>(this));
   return Http::FilterDataStatus::Continue;
 }
 
 Http::FilterTrailersStatus Filter::encodeTrailers(Http::ResponseTrailerMap&) {
+  ENVOY_STREAM_LOG(debug, "ext_authz filter encodeTrailers {}", *decoder_callbacks_, static_cast<void*>(this));
   return Http::FilterTrailersStatus::Continue;
 }
 
 Http::FilterMetadataStatus Filter::encodeMetadata(Http::MetadataMap&) {
+  ENVOY_STREAM_LOG(debug, "ext_authz filter encodeMetadata {}", *decoder_callbacks_, static_cast<void*>(this));
   return Http::FilterMetadataStatus::Continue;
 }
 
@@ -225,9 +233,9 @@ void Filter::onComplete(Filters::Common::ExtAuthz::ResponsePtr&& response) {
     // Any changes to request headers can affect how the request is going to be
     // routed. If we are changing the headers we also need to clear the route
     // cache.
-    if (config_->clearRouteCache() &&
-        (!response->headers_to_set.empty() || !response->headers_to_append.empty() ||
-         !response->headers_to_remove.empty())) {
+    if (config_->clearRouteCache()) { //&&
+        //(!response->headers_to_set.empty() || !response->headers_to_append.empty() ||
+        // !response->headers_to_remove.empty())) {
       ENVOY_STREAM_LOG(debug, "ext_authz is clearing route cache", *decoder_callbacks_);
       decoder_callbacks_->clearRouteCache();
     }

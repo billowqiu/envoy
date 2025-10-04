@@ -178,7 +178,7 @@ public:
 /**
  * Configuration for the router filter.
  */
-class FilterConfig {
+class FilterConfig : public Logger::Loggable<Logger::Id::router> {
 public:
   FilterConfig(Stats::StatName stat_prefix, const LocalInfo::LocalInfo& local_info,
                Stats::Scope& scope, Upstream::ClusterManager& cm, Runtime::Loader& runtime,
@@ -196,6 +196,8 @@ public:
         suppress_grpc_request_failure_code_stats_(suppress_grpc_request_failure_code_stats),
         http_context_(http_context), zone_name_(local_info_.zoneStatName()),
         shadow_writer_(std::move(shadow_writer)), time_source_(time_source) {
+    ENVOY_LOG(trace, "construct router FilterConfig with localClusterName {}", 
+              cm.localClusterName().has_value()?cm.localClusterName().value():"");
     if (!strict_check_headers.empty()) {
       strict_check_headers_ = std::make_unique<HeaderVector>();
       for (const auto& header : strict_check_headers) {
@@ -536,7 +538,7 @@ private:
 
   RetryStatePtr retry_state_;
   FilterConfig& config_;
-  Http::StreamDecoderFilterCallbacks* callbacks_{};
+  Http::StreamDecoderFilterCallbacks* callbacks_{}; // ActiveStreamDecoderFilter
   RouteConstSharedPtr route_;
   const RouteEntry* route_entry_{};
   Upstream::ClusterInfoConstSharedPtr cluster_;

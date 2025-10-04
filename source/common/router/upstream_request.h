@@ -135,7 +135,7 @@ private:
   void onPerTryTimeout();
   void onPerTryIdleTimeout();
 
-  RouterFilterInterface& parent_;
+  RouterFilterInterface& parent_; // Router filter
   std::unique_ptr<GenericConnPool> conn_pool_;
   bool grpc_rq_success_deferred_;
   Event::TimerPtr per_try_timeout_;

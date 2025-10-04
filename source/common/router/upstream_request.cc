@@ -175,7 +175,8 @@ void UpstreamRequest::decodeHeaders(Http::ResponseHeaderMapPtr&& headers, bool e
     encodeBodyAndTrailers();
     paused_for_connect_ = false;
   }
-
+  ENVOY_STREAM_LOG(trace, "call route filter {} onUpstreamHeaders", 
+                  *parent_.callbacks(), static_cast<const void*>(&parent_));
   parent_.onUpstreamHeaders(response_code, std::move(headers), *this, end_stream);
 }
 
@@ -234,7 +235,8 @@ void UpstreamRequest::onUpstreamHostSelected(Upstream::HostDescriptionConstShare
 void UpstreamRequest::encodeHeaders(bool end_stream) {
   ASSERT(!encode_complete_);
   encode_complete_ = end_stream;
-
+  // 向上游发起请求了，调用 source/extensions/upstreams/http/http/upstream_request.cc 里面的
+  ENVOY_STREAM_LOG(trace, "create upstream new stream end_stream {}", *parent_.callbacks(), end_stream);
   conn_pool_->newStream(this);
 }
 

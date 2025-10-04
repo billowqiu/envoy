@@ -31,6 +31,7 @@ void HttpConnPool::newStream(GenericConnectionPoolCallbacks* callbacks) {
   // It's possible for a reset to happen inline within the newStream() call. In this case, we
   // might get deleted inline as well. Only write the returned handle out if it is not nullptr to
   // deal with this case.
+  // 调用  source/common/http/conn_pool_base.cc
   Envoy::Http::ConnectionPool::Cancellable* handle =
       pool_data_.value().newStream(callbacks->upstreamToDownstream(), *this);
   if (handle) {

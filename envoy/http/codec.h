@@ -518,6 +518,7 @@ public:
 /**
  * Callbacks for server connections.
  */
+// 毫无疑问，ConnectionManagerImpl 实现了此接口；注意接口的参数response_encoder用于关联请求和响应
 class ServerConnectionCallbacks : public virtual ConnectionCallbacks {
 public:
   /**

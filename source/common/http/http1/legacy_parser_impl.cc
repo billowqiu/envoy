@@ -42,6 +42,7 @@ public:
     parser_.data = data;
     settings_ = {
         [](http_parser* parser) -> int {
+          // 回调到 codec_impl 里面
           auto* conn_impl = static_cast<ParserCallbacks*>(parser->data);
           auto status = conn_impl->onMessageBegin();
           return conn_impl->setAndCheckCallbackStatus(std::move(status));

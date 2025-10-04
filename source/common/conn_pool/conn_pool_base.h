@@ -25,6 +25,11 @@ struct AttachContext {
 
 // ActiveClient provides a base class for connection pool clients that handles connection timings
 // as well as managing the connection timeout.
+// source/common/http/http1/conn_pool.h  Envoy::Http::Http1::ActiveClient
+// source/common/http/http2/conn_pool.h  Envoy::Http::Http2::ActiveClient
+// source/common/http/http3/conn_pool.h  Envoy::Http::Http3::ActiveClient
+// source/common/http/conn_pool_base.h Envoy::Http::ActiveClient
+
 class ActiveClient : public LinkedObject<ActiveClient>,
                      public Network::ConnectionCallbacks,
                      public Event::DeferredDeletable,

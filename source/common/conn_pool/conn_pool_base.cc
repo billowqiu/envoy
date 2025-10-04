@@ -114,6 +114,7 @@ ConnPoolImplBase::ConnectionResult ConnPoolImplBase::tryCreateNewConnections() {
   // many connections are desired when the host becomes healthy again, but
   // overwhelming it with connections is not desirable.
   for (int i = 0; i < 3; ++i) {
+    // 就是调用的下面那个函数，有默认参数
     result = tryCreateNewConnection();
     if (result != ConnectionResult::CreatedNewConnection) {
       break;
@@ -141,6 +142,8 @@ ConnPoolImplBase::tryCreateNewConnection(float global_preconnect_ratio) {
   if (can_create_connection ||
       (ready_clients_.empty() && busy_clients_.empty() && connecting_clients_.empty())) {
     ENVOY_LOG(debug, "creating a new connection");
+    // 回调 PoolData 里面预埋的回调，也就是 source/common/http/http1/conn_pool.cc 最下面那段
+    // [](HttpConnPoolImplBase* pool) { return std::make_unique<ActiveClient>(*pool); },
     ActiveClientPtr client = instantiateActiveClient();
     if (client.get() == nullptr) {
       ENVOY_LOG(trace, "connection creation failed");
@@ -234,9 +237,12 @@ ConnectionPool::Cancellable* ConnPoolImplBase::newStreamImpl(AttachContext& cont
 
   ASSERT(static_cast<ssize_t>(connecting_stream_capacity_) ==
          connectingCapacity(connecting_clients_)); // O(n) debug check.
+  // 有现成的 client 就直接用
+  // ⚠️⚠️, 这个 pool 其实是每个 worker 线程有一个，而且是用的 thread_local 方式，所以你 12 线程的，前面几个可能不会复用到；等所有线程塞满了就会打印这个了
   if (!ready_clients_.empty()) {
     ActiveClient& client = *ready_clients_.front();
     ENVOY_CONN_LOG(debug, "using existing connection", client);
+    ENVOY_LOG(trace, fmt::format("{}", *this));
     attachStreamToClient(client, context);
     // Even if there's a ready client, we may want to preconnect to handle the next incoming stream.
     tryCreateNewConnections();

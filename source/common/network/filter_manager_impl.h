@@ -6,7 +6,7 @@
 #include "envoy/network/connection.h"
 #include "envoy/network/filter.h"
 #include "envoy/network/socket.h"
-
+#include "source/common/common/logger.h"
 #include "source/common/common/linked_object.h"
 
 namespace Envoy {
@@ -99,7 +99,7 @@ public:
 /**
  * This is a filter manager for TCP (L4) filters. It is split out for ease of testing.
  */
-class FilterManagerImpl {
+class FilterManagerImpl : public Logger::Loggable<Logger::Id::main> {
 public:
   FilterManagerImpl(FilterManagerConnection& connection, const Socket& socket)
       : connection_(connection), socket_(socket) {}
@@ -163,6 +163,7 @@ private:
   FilterManagerConnection& connection_;
   const Socket& socket_;
   Upstream::HostDescriptionConstSharedPtr host_description_;
+  // 这两个 upstream 和 downstream 好像表示的意思跟 envoy 一直说的 downstream 刚好顺序反了？？
   std::list<ActiveReadFilterPtr> upstream_filters_;
   std::list<ActiveWriteFilterPtr> downstream_filters_;
 };

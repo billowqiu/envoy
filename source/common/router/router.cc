@@ -361,7 +361,7 @@ void Filter::chargeUpstreamCode(Http::Code code,
 
 Http::FilterHeadersStatus Filter::decodeHeaders(Http::RequestHeaderMap& headers, bool end_stream) {
   downstream_headers_ = &headers;
-
+  ENVOY_STREAM_LOG(debug, "call router decodeHeaders end_stream: {}, filter {}", *callbacks_, end_stream, static_cast<void*>(this));
   // Extract debug configuration from filter state. This is used further along to determine whether
   // we should append cluster and host headers to the response, and whether to forward the request
   // upstream.
@@ -388,7 +388,7 @@ Http::FilterHeadersStatus Filter::decodeHeaders(Http::RequestHeaderMap& headers,
   route_ = callbacks_->route();
   if (!route_) {
     config_.stats_.no_route_.inc();
-    ENVOY_STREAM_LOG(debug, "no cluster match for URL '{}'", *callbacks_, headers.getPathValue());
+    ENVOY_STREAM_LOG(debug, "no cluster match for URL '{}', filter {}", *callbacks_, headers.getPathValue(), static_cast<void*>(this));
 
     callbacks_->streamInfo().setResponseFlag(StreamInfo::ResponseFlag::NoRouteFound);
     callbacks_->sendLocalReply(Http::Code::NotFound, "", modify_headers, absl::nullopt,
@@ -441,7 +441,7 @@ Http::FilterHeadersStatus Filter::decodeHeaders(Http::RequestHeaderMap& headers,
       config_.cm_.getThreadLocalCluster(route_entry_->clusterName());
   if (!cluster) {
     config_.stats_.no_cluster_.inc();
-    ENVOY_STREAM_LOG(debug, "unknown cluster '{}'", *callbacks_, route_entry_->clusterName());
+    ENVOY_STREAM_LOG(debug, "unknown cluster '{}', filter {}", *callbacks_, route_entry_->clusterName(), static_cast<void*>(this));
 
     callbacks_->streamInfo().setResponseFlag(StreamInfo::ResponseFlag::NoClusterFound);
     callbacks_->sendLocalReply(route_entry_->clusterNotFoundResponseCode(), "", modify_headers,
@@ -453,8 +453,8 @@ Http::FilterHeadersStatus Filter::decodeHeaders(Http::RequestHeaderMap& headers,
 
   // Set up stat prefixes, etc.
   request_vcluster_ = route_entry_->virtualCluster(headers);
-  ENVOY_STREAM_LOG(debug, "cluster '{}' match for URL '{}'", *callbacks_,
-                   route_entry_->clusterName(), headers.getPathValue());
+  ENVOY_STREAM_LOG(debug, "cluster '{}' match for URL '{}', filter {}", *callbacks_,
+                   route_entry_->clusterName(), headers.getPathValue(), static_cast<void*>(this));
 
   if (config_.strict_check_headers_ != nullptr) {
     for (const auto& header : *config_.strict_check_headers_) {
@@ -568,13 +568,17 @@ Http::FilterHeadersStatus Filter::decodeHeaders(Http::RequestHeaderMap& headers,
   if (upstream_options_ && callbacks_->getUpstreamSocketOptions()) {
     Network::Socket::appendOptions(upstream_options_, callbacks_->getUpstreamSocketOptions());
   }
-
+  // 每次都创建一个新的 pool 对象？
   std::unique_ptr<GenericConnPool> generic_conn_pool = createConnPool(*cluster);
-
   if (!generic_conn_pool) {
+    ENVOY_STREAM_LOG(debug, "router create generic_conn_pool fail, return no health upstream {}, filter {}", *callbacks_, static_cast<void*>(this));
     sendNoHealthyUpstreamResponse();
     return Http::FilterHeadersStatus::StopIteration;
   }
+  ENVOY_STREAM_LOG(debug, "router create generic_conn_pool {}, filter {}", 
+                   *callbacks_, 
+                   static_cast<const void*>(generic_conn_pool.get()), 
+                   static_cast<void*>(this));
   Upstream::HostDescriptionConstSharedPtr host = generic_conn_pool->host();
 
   if (debug_config && debug_config->append_upstream_host_) {
@@ -669,8 +673,7 @@ Http::FilterHeadersStatus Filter::decodeHeaders(Http::RequestHeaderMap& headers,
 
   internal_redirects_with_body_enabled_ =
       Runtime::runtimeFeatureEnabled("envoy.reloadable_features.internal_redirects_with_body");
-
-  ENVOY_STREAM_LOG(debug, "router decoding headers:\n{}", *callbacks_, headers);
+  ENVOY_STREAM_LOG(debug, "router decoding headers:\n{}, filter {}", *callbacks_, headers, static_cast<void*>(this));
 
   // Hang onto the modify_headers function for later use in handling upstream responses.
   modify_headers_ = modify_headers;
@@ -678,6 +681,7 @@ Http::FilterHeadersStatus Filter::decodeHeaders(Http::RequestHeaderMap& headers,
   UpstreamRequestPtr upstream_request =
       std::make_unique<UpstreamRequest>(*this, std::move(generic_conn_pool));
   LinkedList::moveIntoList(std::move(upstream_request), upstream_requests_);
+  // 上面创建 generic_conn_pool 的过程中，将各个回调通过 lamda 布置好了，UpstreamRequest 的 encodeHeaders里面直接调用
   upstream_requests_.front()->encodeHeaders(end_stream);
   if (end_stream) {
     onRequestComplete();
@@ -712,6 +716,7 @@ Filter::createConnPool(Upstream::ThreadLocalCluster& thread_local_cluster) {
       should_tcp_proxy = (method == Http::Headers::get().MethodValues.Post);
     }
   }
+  // 这里绕来绕去将 router 和 upstream 关联起来了
   return factory->createGenericConnPool(thread_local_cluster, should_tcp_proxy, *route_entry_,
                                         callbacks_->streamInfo().protocol(), this);
 }
@@ -725,6 +730,7 @@ void Filter::sendNoHealthyUpstreamResponse() {
 }
 
 Http::FilterDataStatus Filter::decodeData(Buffer::Instance& data, bool end_stream) {
+  ENVOY_STREAM_LOG(debug, "call router decodeData end_stream: {}, filter {}", *callbacks_, end_stream, static_cast<void*>(this));
   // upstream_requests_.size() cannot be > 1 because that only happens when a per
   // try timeout occurs with hedge_on_per_try_timeout enabled but the per
   // try timeout timer is not started until onRequestComplete(). It could be zero
@@ -804,6 +810,8 @@ Http::FilterTrailersStatus Filter::decodeTrailers(Http::RequestTrailerMap& trail
 }
 
 Http::FilterMetadataStatus Filter::decodeMetadata(Http::MetadataMap& metadata_map) {
+  ENVOY_STREAM_LOG(debug, "call router decodeMetadata metadata_map: {}, filter {}", 
+                   *callbacks_, metadata_map, static_cast<void*>(this));
   Http::MetadataMapPtr metadata_map_ptr = std::make_unique<Http::MetadataMap>(metadata_map);
   if (!upstream_requests_.empty()) {
     // TODO(soya3129): Save metadata for retry, redirect and shadowing case.
@@ -893,7 +901,7 @@ void Filter::onDestroy() {
 }
 
 void Filter::onResponseTimeout() {
-  ENVOY_STREAM_LOG(debug, "upstream timeout", *callbacks_);
+  ENVOY_STREAM_LOG(debug, "upstream timeout, filter {}", *callbacks_, static_cast<void*>(this));
 
   // If we had an upstream request that got a "good" response, save its
   // upstream timing information into the downstream stream info.
@@ -1282,7 +1290,7 @@ void Filter::resetOtherUpstreams(UpstreamRequest& upstream_request) {
 
 void Filter::onUpstreamHeaders(uint64_t response_code, Http::ResponseHeaderMapPtr&& headers,
                                UpstreamRequest& upstream_request, bool end_stream) {
-  ENVOY_STREAM_LOG(debug, "upstream headers complete: end_stream={}", *callbacks_, end_stream);
+  ENVOY_STREAM_LOG(debug, "upstream headers complete: end_stream={}, filter {}", *callbacks_, end_stream, static_cast<void*>(this));
 
   modify_headers_(*headers);
   // When grpc-status appears in response headers, convert grpc-status to HTTP status code

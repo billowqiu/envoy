@@ -143,6 +143,7 @@ DispatcherImpl::createServerConnection(Network::ConnectionSocketPtr&& socket,
                                        Network::TransportSocketPtr&& transport_socket,
                                        StreamInfo::StreamInfo& stream_info) {
   ASSERT(isThreadSafe());
+  // 创建 downstream 方向的链接
   return std::make_unique<Network::ServerConnectionImpl>(
       *this, std::move(socket), std::move(transport_socket), stream_info, true);
 }
@@ -153,6 +154,7 @@ DispatcherImpl::createClientConnection(Network::Address::InstanceConstSharedPtr 
                                        Network::TransportSocketPtr&& transport_socket,
                                        const Network::ConnectionSocket::OptionsSharedPtr& options) {
   ASSERT(isThreadSafe());
+  // 创建 upstream 方向的链接
   return std::make_unique<Network::ClientConnectionImpl>(*this, address, source_address,
                                                          std::move(transport_socket), options);
 }

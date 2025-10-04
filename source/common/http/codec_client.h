@@ -210,6 +210,7 @@ private:
 
   struct ActiveRequest;
 
+  // 怎么这么多名字一样的抽象。。。
   /**
    * Wrapper for an outstanding request. Designed for handling stream multiplexing.
    */

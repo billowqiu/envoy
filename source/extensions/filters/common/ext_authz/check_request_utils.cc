@@ -187,6 +187,7 @@ void CheckRequestUtils::createHttpCheck(
 
   (*attrs->mutable_destination()->mutable_labels()) = destination_labels;
   // Fill in the context extensions and metadata context.
+  // 这个字段放到了 proto 里面；但是 http 的时候这个字段没有被弄过去
   (*attrs->mutable_context_extensions()) = std::move(context_extensions);
   (*attrs->mutable_metadata_context()) = std::move(metadata_context);
 }

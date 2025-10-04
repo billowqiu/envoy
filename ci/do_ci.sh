@@ -84,7 +84,7 @@ function cp_binary_for_image_build() {
   strip "${FINAL_DELIVERY_DIR}"/envoy -o "${BASE_TARGET_DIR}"/"${TARGET_DIR}"_stripped/envoy
 
   # Copy for azp which doesn't preserve permissions, creating a tar archive
-  tar czf "${ENVOY_BUILD_DIR}"/"${EXE_NAME}"_binary.tar.gz -C "${BASE_TARGET_DIR}" "${TARGET_DIR}" "${TARGET_DIR}"_stripped
+  # tar czf "${ENVOY_BUILD_DIR}"/"${EXE_NAME}"_binary.tar.gz -C "${BASE_TARGET_DIR}" "${TARGET_DIR}" "${TARGET_DIR}"_stripped
 
   # Remove binaries to save space, only if BUILD_REASON exists (running in AZP)
   [[ -z "${BUILD_REASON}" ]] || \
@@ -255,6 +255,16 @@ elif [[ "$CI_TARGET" == "bazel.debug.server_only" ]]; then
   setup_clang_toolchain
   echo "bazel debug build..."
   bazel_envoy_binary_build debug
+  exit 0
+elif [[ "$CI_TARGET" == "vscode.refresh_compdb" ]]; then
+  setup_clang_toolchain
+  echo "bazel vscode refresh_compdb ..."
+  tools/vscode/refresh_compdb.sh
+  exit 0
+elif [[ "$CI_TARGET" == "vscode.gen.debugconfig" ]]; then
+  setup_clang_toolchain
+  echo "bazel vscode gen debug config ..."
+  tools/vscode/generate_debug_config.py //source/exe:envoy-static --args "-c envoy.yaml"
   exit 0
 elif [[ "$CI_TARGET" == "bazel.asan" ]]; then
   setup_clang_toolchain

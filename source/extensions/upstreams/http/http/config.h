@@ -28,7 +28,7 @@ public:
         envoy::extensions::upstreams::http::http::v3::HttpConnectionPoolProto>();
   }
 };
-
+// 注册到工厂中心，router 里面会在运行时获取此工厂来调用createGenericConnPool
 DECLARE_FACTORY(HttpGenericConnPoolFactory);
 
 } // namespace Http

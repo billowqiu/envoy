@@ -1063,7 +1063,7 @@ public:
  * Wraps the route configuration which matches an incoming request headers to a backend cluster.
  * This is split out mainly to help with unit testing.
  */
-class RouteMatcher {
+class RouteMatcher : public Logger::Loggable<Logger::Id::http> {
 public:
   RouteMatcher(const envoy::config::route::v3::RouteConfiguration& config,
                const OptionalHttpFilters& optional_http_filters,

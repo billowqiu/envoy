@@ -8,6 +8,7 @@ namespace Envoy {
 namespace Http {
 namespace Http1 {
 
+// 为什么这里叫 Legacy ，好像目前也没有其他实现
 class LegacyHttpParserImpl : public Parser {
 public:
   LegacyHttpParserImpl(MessageType type, ParserCallbacks* data);

@@ -28,7 +28,7 @@ Http::FilterFactoryCb ExtAuthzFilterConfig::createFilterFactoryFromProtoTyped(
   // The callback is created in main thread and executed in worker thread, variables except factory
   // context must be captured by value into the callback.
   Http::FilterFactoryCb callback;
-
+  // callbacks 实际是 filter_manager
   if (proto_config.has_http_service()) {
     // Raw HTTP client.
     const uint32_t timeout_ms = PROTOBUF_GET_MS_OR_DEFAULT(proto_config.http_service().server_uri(),

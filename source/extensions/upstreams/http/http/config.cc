@@ -13,6 +13,7 @@ Router::GenericConnPoolPtr HttpGenericConnPoolFactory::createGenericConnPool(
     const Router::RouteEntry& route_entry,
     absl::optional<Envoy::Http::Protocol> downstream_protocol,
     Upstream::LoadBalancerContext* ctx) const {
+  // HttpConnPool 将 router 和 upstream 两个模块串起来
   auto ret = std::make_unique<HttpConnPool>(thread_local_cluster, is_connect, route_entry,
                                             downstream_protocol, ctx);
   return (ret->valid() ? std::move(ret) : nullptr);

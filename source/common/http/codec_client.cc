@@ -32,6 +32,8 @@ CodecClient::CodecClient(CodecType type, Network::ClientConnectionPtr&& connecti
     connection_->detectEarlyCloseWhenReadDisabled(false);
   }
   connection_->addConnectionCallbacks(*this);
+  // 这是干啥？
+  ENVOY_CONN_LOG(debug, "CodecClient add CodecReadFilter", *connection_);
   connection_->addReadFilter(Network::ReadFilterSharedPtr{new CodecReadFilter(*this)});
 
   if (idle_timeout_) {
@@ -57,7 +59,7 @@ void CodecClient::connect() {
     ASSERT(connection_->state() == Network::Connection::State::Open);
     connected_ = true;
   } else {
-    ENVOY_CONN_LOG(debug, "connecting", *connection_);
+    ENVOY_CONN_LOG(debug, "connecting to upstream", *connection_);
     connection_->connect();
   }
 }
@@ -151,6 +153,7 @@ void CodecClient::onReset(ActiveRequest& request, StreamResetReason reason) {
 }
 
 void CodecClient::onData(Buffer::Instance& data) {
+  // 类似 downstream 上来的那个流程一样，通过 codec 来 dispatch
   const Status status = codec_->dispatch(data);
 
   if (!status.ok()) {
@@ -176,6 +179,7 @@ CodecClientProd::CodecClientProd(CodecType type, Network::ClientConnectionPtr&& 
                                  Event::Dispatcher& dispatcher,
                                  Random::RandomGenerator& random_generator)
     : CodecClient(type, std::move(connection), host, dispatcher) {
+  ENVOY_CONN_LOG(debug, "CodecClientProd create codec {}", *connection_, type);
   switch (type) {
   case CodecType::HTTP1: {
     codec_ = std::make_unique<Http1::ClientConnectionImpl>(

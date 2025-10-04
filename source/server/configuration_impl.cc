@@ -33,7 +33,7 @@ bool FilterChainUtility::buildFilterChain(Network::FilterManager& filter_manager
                                           const std::vector<Network::FilterFactoryCb>& factories) {
   ENVOY_LOG(debug, "buildFilterChain with network filter factories");
   for (const Network::FilterFactoryCb& factory : factories) {
-    ENVOY_LOG(debug, "call FilterFactoryCb factory");
+    ENVOY_LOG(debug, "call FilterFactoryCb factory {}", factory.target_type().name());
     factory(filter_manager);
   }
 
@@ -45,7 +45,7 @@ bool FilterChainUtility::buildFilterChain(
     const std::vector<Network::ListenerFilterFactoryCb>& factories) {
   ENVOY_LOG(info, "buildFilterChain with listener filter factories");
   for (const Network::ListenerFilterFactoryCb& factory : factories) {
-    ENVOY_LOG(debug, "call ListenerFilterFactoryCb factory");
+    ENVOY_LOG(debug, "call ListenerFilterFactoryCb factory {}", factory.target_type().name());
     factory(filter_manager);
   }
 

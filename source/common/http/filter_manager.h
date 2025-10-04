@@ -300,7 +300,7 @@ struct ActiveStreamDecoderFilter : public ActiveStreamFilterBase,
   void requestRouteConfigUpdate(
       Http::RouteConfigUpdatedCallbackSharedPtr route_config_updated_cb) override;
   absl::optional<Router::ConfigConstSharedPtr> routeConfig();
-
+  // 这个才是真正的 decoder filter 实例
   StreamDecoderFilterSharedPtr handle_;
   bool is_grpc_request_{};
 };
@@ -671,10 +671,13 @@ public:
         proxy_100_continue_(proxy_100_continue), buffer_limit_(buffer_limit),
         filter_chain_factory_(filter_chain_factory), local_reply_(local_reply),
         stream_info_(protocol, time_source, connection.connectionInfoProviderSharedPtr(),
-                     parent_filter_state, filter_state_life_span) {}
+                     parent_filter_state, filter_state_life_span) {
+    ENVOY_STREAM_LOG(trace, "construct FilterManager {}", *this, static_cast<const void*>(this));
+                     }
   ~FilterManager() override {
     ASSERT(state_.destroyed_);
     ASSERT(state_.filter_call_state_ == 0);
+    ENVOY_STREAM_LOG(trace, "destroy FilterManager {}", *this, static_cast<const void*>(this));
   }
 
   // ScopeTrackedObject
@@ -729,8 +732,13 @@ public:
   }
   void addStreamFilter(StreamFilterSharedPtr filter) override {
     // 添加 filter 到 chain，包括 decoder 和 encode 两个方向的
+    ENVOY_STREAM_LOG(trace, "FilterManager before addStreamFilter filter {}", *this, static_cast<const void*>(filter.get()));   
     addStreamDecoderFilterWorker(filter, nullptr, true);
+    ENVOY_STREAM_LOG(trace, "FilterManager after addStreamDecoderFilterWorker filter {}", *this, static_cast<const void*>(filter.get()));   
+
     addStreamEncoderFilterWorker(filter, nullptr, true);
+    ENVOY_STREAM_LOG(trace, "FilterManager after addStreamEncoderFilterWorker filter {}", *this, static_cast<const void*>(filter.get()));  
+
     StreamDecoderFilter* decoder_filter = filter.get();
     filters_.push_back(decoder_filter);
   }
@@ -1015,7 +1023,7 @@ private:
   Buffer::BufferMemoryAccountSharedPtr account_;
   const bool proxy_100_continue_;
 
-  // decoder 和 encoder 的 filter 链
+  // decoder 和 encoder 的 filter 链；list 里面存储的是包装后的 filter 指针，实际的 filter 指针在里面的 handle_
   std::list<ActiveStreamDecoderFilterPtr> decoder_filters_;
   std::list<ActiveStreamEncoderFilterPtr> encoder_filters_;
   std::list<StreamFilterBase*> filters_;

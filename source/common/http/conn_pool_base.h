@@ -113,6 +113,7 @@ public:
   }
 
   void initialize(Upstream::Host::CreateConnectionData& data, HttpConnPoolImplBase& parent) {
+    ENVOY_LOG(trace, "ActiveClient initialize {}", static_cast<const void*>(this));
     real_host_description_ = data.host_description_;
     codec_client_ = parent.createCodecClient(data);
     codec_client_->addConnectionCallbacks(*this);
@@ -156,13 +157,16 @@ public:
                              random_generator, state, protocols),
         codec_fn_(codec_fn), client_fn_(client_fn), protocol_(protocols[0]) {
     ASSERT(protocols.size() == 1);
+    ENVOY_LOG(trace, "FixedHttpConnPoolImpl construct protocol {}", static_cast<const void*>(this), Utility::getProtocolString(protocol_));
   }
 
   CodecClientPtr createCodecClient(Upstream::Host::CreateConnectionData& data) override {
+    ENVOY_LOG(trace, "FixedHttpConnPoolImpl createCodecClient {}", static_cast<const void*>(this));
     return codec_fn_(data, this);
   }
 
   Envoy::ConnectionPool::ActiveClientPtr instantiateActiveClient() override {
+    ENVOY_LOG(trace, "FixedHttpConnPoolImpl instantiateActiveClient {}", static_cast<const void*>(this));
     return client_fn_(this);
   }
 

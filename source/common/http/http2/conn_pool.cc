@@ -30,6 +30,7 @@ allocateConnPool(Event::Dispatcher& dispatcher, Random::RandomGenerator& random_
                  const Network::TransportSocketOptionsConstSharedPtr& transport_socket_options,
                  Upstream::ClusterConnectivityState& state) {
   return std::make_unique<FixedHttpConnPoolImpl>(
+      // 大部分参数跟 HTTP1 一样的，主要是 codec 这里有区别；ActiveClient 这里是继承的 MultiplexedActiveClientBase
       host, priority, dispatcher, options, transport_socket_options, random_generator, state,
       [](HttpConnPoolImplBase* pool) { return std::make_unique<ActiveClient>(*pool); },
       [](Upstream::Host::CreateConnectionData& data, HttpConnPoolImplBase* pool) {

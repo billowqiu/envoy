@@ -201,6 +201,8 @@ public:
    */
   virtual void resetStream() PURE;
 
+  // 以下两个 route 的实现都在filter_manager.h:ActiveStreamFilterBase，
+  // 上面那个又转发到了 ActiveStream 里面的实际实现，属于 ConnectionManagerImpl::ActiveStream 这个子类
   /**
    * Returns the route for the current request. The assumption is that the implementation can do
    * caching where applicable to avoid multiple lookups. If a filter has modified the headers in

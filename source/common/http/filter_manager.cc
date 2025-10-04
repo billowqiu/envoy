@@ -452,7 +452,9 @@ void ActiveStreamDecoderFilter::requestDataTooLarge() {
 void FilterManager::addStreamDecoderFilterWorker(StreamDecoderFilterSharedPtr filter,
                                                  FilterMatchStateSharedPtr match_state,
                                                  bool dual_filter) {
+  ENVOY_STREAM_LOG(trace, "FilterManager addStreamDecoderFilterWorker filter {}", *this, static_cast<const void*>(filter.get()));                                                    
   ActiveStreamDecoderFilterPtr wrapper(
+      // 将实际的 filter 实例又包装了一下，所以打印的指针对不上
       new ActiveStreamDecoderFilter(*this, filter, match_state, dual_filter));
 
   // If we're a dual handling filter, have the encoding wrapper be the only thing registering itself
@@ -460,7 +462,7 @@ void FilterManager::addStreamDecoderFilterWorker(StreamDecoderFilterSharedPtr fi
   if (match_state) {
     match_state->filter_ = filter.get();
   }
-
+  // 将 ActiveStreamDecoderFilter 设置到 filter 里面以方便后续使用
   filter->setDecoderFilterCallbacks(*wrapper);
   // Note: configured decoder filters are appended to decoder_filters_.
   // This means that if filters are configured in the following order (assume all three filters are
@@ -477,6 +479,7 @@ void FilterManager::addStreamDecoderFilterWorker(StreamDecoderFilterSharedPtr fi
 void FilterManager::addStreamEncoderFilterWorker(StreamEncoderFilterSharedPtr filter,
                                                  FilterMatchStateSharedPtr match_state,
                                                  bool dual_filter) {
+  ENVOY_STREAM_LOG(trace, "FilterManager addStreamEncoderFilterWorker filter {}", *this, static_cast<const void*>(filter.get()));
   ActiveStreamEncoderFilterPtr wrapper(
       new ActiveStreamEncoderFilter(*this, filter, match_state, dual_filter));
 
@@ -509,6 +512,8 @@ void FilterManager::maybeContinueDecoding(
     ASSERT(buffered_request_data_);
     (*continue_data_entry)->iteration_state_ =
         ActiveStreamFilterBase::IterationState::StopSingleIteration;
+    ENVOY_STREAM_LOG(trace, "maybeContinueDecoding continueDecoding with decoder filter {}", 
+                     *this, static_cast<const void*>((*continue_data_entry).get()));
     (*continue_data_entry)->continueDecoding();
   }
 }
@@ -521,21 +526,24 @@ void FilterManager::decodeHeaders(ActiveStreamDecoderFilter* filter, RequestHead
   std::list<ActiveStreamDecoderFilterPtr>::iterator continue_data_entry = decoder_filters_.end();
 
   // 开始回调各个 filter 
+  ENVOY_STREAM_LOG(trace, "begin FilterManager decodeHeaders filter iteration size {}, end_stream {}", *this, std::distance(entry, decoder_filters_.end()), end_stream);
   for (; entry != decoder_filters_.end(); entry++) {
-    ENVOY_STREAM_LOG(trace,
-                      "decodeHeaders filter iteration filter={}",
-                      *this, static_cast<const void*>((*entry).get()));
     (*entry)->maybeEvaluateMatchTreeWithNewData(
         [&](auto& matching_data) { matching_data.onRequestHeaders(headers); });
 
     if ((*entry)->skipFilter()) {
+      ENVOY_STREAM_LOG(trace, "skip decodeHeaders filter iteration filter={}", *this, static_cast<const void*>((*entry).get()));
       continue;
     }
 
     ASSERT(!(state_.filter_call_state_ & FilterCallState::DecodeHeaders));
     state_.filter_call_state_ |= FilterCallState::DecodeHeaders;
     (*entry)->end_stream_ = (end_stream && continue_data_entry == decoder_filters_.end());
+    // decodeHeaders 和 其他系列的 decodeXXX 不一样，其他的都是 (*entry)->handle_->decodeData 直接通过 entry 的 handle 来实际调用
+    // 但是这里是通过 entry 先来一次，在 entry 再来通过 handle 调用
     FilterHeadersStatus status = (*entry)->decodeHeaders(headers, (*entry)->end_stream_);
+    ENVOY_STREAM_LOG(trace, "decode headers called: filter={}, real filter={} status={}", *this,
+                     static_cast<const void*>((*entry).get()), static_cast<const void*>((*entry)->handle_.get()), static_cast<uint64_t>(status));
     if (state_.decoder_filter_chain_aborted_) {
       ENVOY_STREAM_LOG(trace,
                        "decodeHeaders filter iteration aborted due to local reply: filter={}",
@@ -552,7 +560,7 @@ void FilterManager::decodeHeaders(ActiveStreamDecoderFilter* filter, RequestHead
                      static_cast<const void*>((*entry).get()), static_cast<uint64_t>(status));
 
     (*entry)->decode_headers_called_ = true;
-
+    // 下面这里会影响后续 decodeData 的处理
     const auto continue_iteration = (*entry)->commonHandleAfterHeadersCallback(status, end_stream);
     ENVOY_BUG(!continue_iteration || !state_.local_complete_,
               "Filter did not return StopAll or StopIteration after sending a local reply.");
@@ -565,6 +573,8 @@ void FilterManager::decodeHeaders(ActiveStreamDecoderFilter* filter, RequestHead
     // Skip processing metadata after sending local reply
     if (state_.local_complete_ && std::next(entry) != decoder_filters_.end()) {
       maybeContinueDecoding(continue_data_entry);
+      ENVOY_STREAM_LOG(trace, "skip decodeHeaders return filter iteration filter={} by maybeContinueDecoding and local_complete_", 
+                       *this, static_cast<const void*>((*entry).get()));
       return;
     }
 
@@ -582,10 +592,13 @@ void FilterManager::decodeHeaders(ActiveStreamDecoderFilter* filter, RequestHead
     }
 
     if (!continue_iteration && std::next(entry) != decoder_filters_.end()) {
+      // ext_authz 调用之后会走到这里，退出本次迭代；后续由 filter 发起 continue
       // Stop iteration IFF this is not the last filter. If it is the last filter, continue with
       // processing since we need to handle the case where a terminal filter wants to buffer, but
       // a previous filter has added body.
       maybeContinueDecoding(continue_data_entry);
+      ENVOY_STREAM_LOG(trace, "skip decodeHeaders return filter iteration filter={} by maybeContinueDecoding and !continue_iteration", 
+                       *this, static_cast<const void*>((*entry).get()));
       return;
     }
 
@@ -595,6 +608,7 @@ void FilterManager::decodeHeaders(ActiveStreamDecoderFilter* filter, RequestHead
       continue_data_entry = entry;
     }
   }
+  ENVOY_STREAM_LOG(trace, "end FilterManager decodeHeaders filter iteration, end_stream {}", *this, end_stream);
 
   maybeContinueDecoding(continue_data_entry);
 
@@ -615,6 +629,7 @@ void FilterManager::decodeData(ActiveStreamDecoderFilter* filter, Buffer::Instan
   // If a response is complete or a reset has been sent, filters do not care about further body
   // data. Just drop it.
   if (state_.local_complete_) {
+    ENVOY_STREAM_LOG(trace, "FilterManager decodeData return by local_complete_, end_stream {}", *this, end_stream);
     return;
   }
 
@@ -623,16 +638,16 @@ void FilterManager::decodeData(ActiveStreamDecoderFilter* filter, Buffer::Instan
   // Filter iteration may start at the current filter.
   std::list<ActiveStreamDecoderFilterPtr>::iterator entry =
       commonDecodePrefix(filter, filter_iteration_start_state);
-
+  ENVOY_STREAM_LOG(trace, "begin FilterManager decodeData filter iteration size {}, end_stream {}", *this, std::distance(entry, decoder_filters_.end()), end_stream);
   for (; entry != decoder_filters_.end(); entry++) {
-    ENVOY_STREAM_LOG(trace,
-                  "decodeData filter iteration filter={}",
-                  *this, static_cast<const void*>((*entry).get()));
     if ((*entry)->skipFilter()) {
+      ENVOY_STREAM_LOG(trace, "skip decodeData filter iteration filter={}", *this, static_cast<const void*>((*entry).get()));
       continue;
     }
     // If the filter pointed by entry has stopped for all frame types, return now.
+    // 在 decodeHeaders 阶段，ext 返回了暂停 StopAllIterationAndWatermark 会导致这里在执行 rate 的 decodeData 时跳出去了
     if (handleDataIfStopAll(**entry, data, state_.decoder_filters_streaming_)) {
+      ENVOY_STREAM_LOG(trace, "handleDataIfStopAll return decodeData filter iteration filter={}", *this, static_cast<const void*>((*entry).get()));
       return;
     }
     // If end_stream_ is marked for a filter, the data is not for this filter and filters after.
@@ -666,6 +681,7 @@ void FilterManager::decodeData(ActiveStreamDecoderFilter* filter, Buffer::Instan
     // whole function. If just skip the filter, the codes after the loop will be called with
     // wrong data. For encodeData, the response_encoder->encode() will be called.
     if ((*entry)->end_stream_) {
+      ENVOY_STREAM_LOG(trace, "skip decodeData return filter iteration filter={} by end_stream", *this, static_cast<const void*>((*entry).get()));
       return;
     }
     ASSERT(!(state_.filter_call_state_ & FilterCallState::DecodeData));
@@ -681,6 +697,7 @@ void FilterManager::decodeData(ActiveStreamDecoderFilter* filter, Buffer::Instan
 
     state_.filter_call_state_ |= FilterCallState::DecodeData;
     (*entry)->end_stream_ = end_stream && !filter_manager_callbacks_.requestTrailers();
+    // 这里调用实际的 fliter 回调
     FilterDataStatus status = (*entry)->handle_->decodeData(data, (*entry)->end_stream_);
     if ((*entry)->end_stream_) {
       (*entry)->handle_->decodeComplete();
@@ -689,8 +706,8 @@ void FilterManager::decodeData(ActiveStreamDecoderFilter* filter, Buffer::Instan
     if (end_stream) {
       state_.filter_call_state_ &= ~FilterCallState::LastDataFrame;
     }
-    ENVOY_STREAM_LOG(trace, "decode data called: filter={} status={}", *this,
-                     static_cast<const void*>((*entry).get()), static_cast<uint64_t>(status));
+    ENVOY_STREAM_LOG(trace, "decode data called: filter={}, real filter={} status={}", *this,
+                     static_cast<const void*>((*entry).get()), static_cast<const void*>((*entry)->handle_.get()), static_cast<uint64_t>(status));
     if (state_.decoder_filter_chain_aborted_) {
       ENVOY_STREAM_LOG(trace, "decodeData filter iteration aborted due to local reply: filter={}",
                        *this, static_cast<const void*>((*entry).get()));
@@ -715,10 +732,12 @@ void FilterManager::decodeData(ActiveStreamDecoderFilter* filter, Buffer::Instan
       if (fix_added_trailers) {
         break;
       } else {
+        ENVOY_STREAM_LOG(trace, "skip decodeData return filter iteration filter={} by fix_added_trailers", *this, static_cast<const void*>((*entry).get()));
         return;
       }
     }
   }
+  ENVOY_STREAM_LOG(trace, "end FilterManager decodeData filter iteration, end_stream {}", *this, end_stream);
 
   // If trailers were adding during decodeData we need to trigger decodeTrailers in order
   // to allow filters to process the trailers.
@@ -772,15 +791,13 @@ void FilterManager::decodeTrailers(ActiveStreamDecoderFilter* filter, RequestTra
   // Filter iteration may start at the current filter.
   std::list<ActiveStreamDecoderFilterPtr>::iterator entry =
       commonDecodePrefix(filter, FilterIterationStartState::CanStartFromCurrent);
-
+  ENVOY_STREAM_LOG(trace, "begin FilterManager decodeTrailers filter iteration, filters size {}", *this, std::distance(entry, decoder_filters_.end()));
   for (; entry != decoder_filters_.end(); entry++) {
-    ENVOY_STREAM_LOG(trace,
-                  "addDecodedMetadata filter iteration filter={}",
-                  *this, static_cast<const void*>((*entry).get()));
     (*entry)->maybeEvaluateMatchTreeWithNewData(
         [&](auto& matching_data) { matching_data.onRequestTrailers(trailers); });
 
     if ((*entry)->skipFilter()) {
+      ENVOY_STREAM_LOG(trace, "skip decodeTrailers filter iteration filter={}", *this, static_cast<const void*>((*entry).get()));      
       continue;
     }
 
@@ -790,12 +807,13 @@ void FilterManager::decodeTrailers(ActiveStreamDecoderFilter* filter, RequestTra
     }
     ASSERT(!(state_.filter_call_state_ & FilterCallState::DecodeTrailers));
     state_.filter_call_state_ |= FilterCallState::DecodeTrailers;
+    // 这里调用实际的 fliter 回调
     FilterTrailersStatus status = (*entry)->handle_->decodeTrailers(trailers);
     (*entry)->handle_->decodeComplete();
     (*entry)->end_stream_ = true;
     state_.filter_call_state_ &= ~FilterCallState::DecodeTrailers;
-    ENVOY_STREAM_LOG(trace, "decode trailers called: filter={} status={}", *this,
-                     static_cast<const void*>((*entry).get()), static_cast<uint64_t>(status));
+    ENVOY_STREAM_LOG(trace, "decode trailers called: filter={}, real filter={}, status={}", *this,
+                     static_cast<const void*>((*entry).get()), static_cast<const void*>((*entry)->handle_.get()),  static_cast<uint64_t>(status));
     if (state_.decoder_filter_chain_aborted_) {
       ENVOY_STREAM_LOG(trace,
                        "decodeTrailers filter iteration aborted due to local reply: filter={}",
@@ -809,6 +827,7 @@ void FilterManager::decodeTrailers(ActiveStreamDecoderFilter* filter, RequestTra
       return;
     }
   }
+  ENVOY_STREAM_LOG(trace, "end FilterManager decodeTrailers filter iteration", *this);
   disarmRequestTimeout();
 }
 
@@ -816,12 +835,10 @@ void FilterManager::decodeMetadata(ActiveStreamDecoderFilter* filter, MetadataMa
   // Filter iteration may start at the current filter.
   std::list<ActiveStreamDecoderFilterPtr>::iterator entry =
       commonDecodePrefix(filter, FilterIterationStartState::CanStartFromCurrent);
-
+  ENVOY_STREAM_LOG(trace, "begin FilterManager decodeMetadata filter iteration", *this);
   for (; entry != decoder_filters_.end(); entry++) {
-    ENVOY_STREAM_LOG(trace,
-                  "decodeMetadata filter iteration filter={}",
-                  *this, static_cast<const void*>((*entry).get()));
     if ((*entry)->skipFilter()) {
+      ENVOY_STREAM_LOG(trace, "skip decodeMetadata filter iteration filter={}, filters size {}", *this, std::distance(entry, decoder_filters_.end()));
       continue;
     }
     // If the filter pointed by entry has stopped for all frame type, stores metadata and returns.
@@ -833,12 +850,14 @@ void FilterManager::decodeMetadata(ActiveStreamDecoderFilter* filter, MetadataMa
       (*entry)->getSavedRequestMetadata()->emplace_back(std::move(metadata_map_ptr));
       return;
     }
-
+    // 这里调用实际的 fliter 回调
     FilterMetadataStatus status = (*entry)->handle_->decodeMetadata(metadata_map);
-    ENVOY_STREAM_LOG(trace, "decode metadata called: filter={} status={}, metadata: {}", *this,
-                     static_cast<const void*>((*entry).get()), static_cast<uint64_t>(status),
+    ENVOY_STREAM_LOG(trace, "decode metadata called: filter={} status={}, real filter={}, metadata: {}", *this,
+                     static_cast<const void*>((*entry).get()), static_cast<const void*>((*entry)->handle_.get()),
+                     static_cast<uint64_t>(status),
                      metadata_map);
   }
+  ENVOY_STREAM_LOG(trace, "end FilterManager decodeMetadata filter iteration", *this);
 }
 
 void FilterManager::maybeEndDecode(bool end_stream) {
@@ -1054,6 +1073,7 @@ void FilterManager::encode100ContinueHeaders(ActiveStreamEncoderFilter* filter,
   // 100-continue filter iteration should always start with the next filter if available.
   std::list<ActiveStreamEncoderFilterPtr>::iterator entry =
       commonEncodePrefix(filter, false, FilterIterationStartState::AlwaysStartFromNext);
+  ENVOY_STREAM_LOG(trace, "begin FilterManager encode100ContinueHeaders filter iteration", *this);
   for (; entry != encoder_filters_.end(); entry++) {
     if ((*entry)->skipFilter()) {
       continue;
@@ -1063,12 +1083,14 @@ void FilterManager::encode100ContinueHeaders(ActiveStreamEncoderFilter* filter,
     state_.filter_call_state_ |= FilterCallState::Encode100ContinueHeaders;
     FilterHeadersStatus status = (*entry)->handle_->encode100ContinueHeaders(headers);
     state_.filter_call_state_ &= ~FilterCallState::Encode100ContinueHeaders;
-    ENVOY_STREAM_LOG(trace, "encode 100 continue headers called: filter={} status={}", *this,
-                     static_cast<const void*>((*entry).get()), static_cast<uint64_t>(status));
+    ENVOY_STREAM_LOG(trace, "encode 100 continue headers called: filter={}, real filter={}, status={}", *this,
+                     static_cast<const void*>((*entry).get()), static_cast<const void*>((*entry)->handle_.get()),
+                     static_cast<uint64_t>(status));
     if (!(*entry)->commonHandleAfter100ContinueHeadersCallback(status)) {
       return;
     }
   }
+  ENVOY_STREAM_LOG(trace, "end FilterManager encode100ContinueHeaders filter iteration", *this);
 
   filter_manager_callbacks_.encode100ContinueHeaders(headers);
 }
@@ -1082,6 +1104,8 @@ void FilterManager::maybeContinueEncoding(
     ASSERT(buffered_response_data_);
     (*continue_data_entry)->iteration_state_ =
         ActiveStreamFilterBase::IterationState::StopSingleIteration;
+    ENVOY_STREAM_LOG(trace, "continueEncoding with encode filter {}, {}", 
+                    *this, static_cast<const void*>(this), static_cast<const void*>((*continue_data_entry).get()));
     (*continue_data_entry)->continueEncoding();
   }
 }
@@ -1098,12 +1122,16 @@ void FilterManager::encodeHeaders(ActiveStreamEncoderFilter* filter, ResponseHea
   std::list<ActiveStreamEncoderFilterPtr>::iterator entry =
       commonEncodePrefix(filter, end_stream, FilterIterationStartState::AlwaysStartFromNext);
   std::list<ActiveStreamEncoderFilterPtr>::iterator continue_data_entry = encoder_filters_.end();
-
+  ENVOY_STREAM_LOG(trace, "begin FilterManager encodeHeaders filter iteration, end_stream {}, filters size {}", 
+                   *this, end_stream, std::distance(entry, encoder_filters_.end()));
   for (; entry != encoder_filters_.end(); entry++) {
     (*entry)->maybeEvaluateMatchTreeWithNewData(
         [&headers](auto& matching_data) { matching_data.onResponseHeaders(headers); });
 
     if ((*entry)->skipFilter()) {
+      ENVOY_STREAM_LOG(trace,
+                       "skip encodeHeaders filter iteration filter={}",
+                       *this, static_cast<const void*>((*entry).get()));
       continue;
     }
     ASSERT(!(state_.filter_call_state_ & FilterCallState::EncodeHeaders));
@@ -1122,8 +1150,10 @@ void FilterManager::encodeHeaders(ActiveStreamEncoderFilter* filter, ResponseHea
            "encodeHeaders when end_stream is already false");
 
     state_.filter_call_state_ &= ~FilterCallState::EncodeHeaders;
-    ENVOY_STREAM_LOG(trace, "encode headers called: filter={} status={}", *this,
-                     static_cast<const void*>((*entry).get()), static_cast<uint64_t>(status));
+    ENVOY_STREAM_LOG(trace, "encode headers called: filter={}, real filter={}, status={}", *this,
+                     static_cast<const void*>((*entry).get()), 
+                     static_cast<const void*>((*entry)->handle_.get()),
+                     static_cast<uint64_t>(status));
 
     (*entry)->encode_headers_called_ = true;
 
@@ -1138,6 +1168,9 @@ void FilterManager::encodeHeaders(ActiveStreamEncoderFilter* filter, ResponseHea
       if (!(*entry)->end_stream_) {
         maybeContinueEncoding(continue_data_entry);
       }
+      ENVOY_STREAM_LOG(trace,
+                       "skip encodeHeaders return filter iteration filter={} by !continue_iteration",
+                       *this, static_cast<const void*>((*entry).get()));      
       return;
     }
 
@@ -1147,6 +1180,7 @@ void FilterManager::encodeHeaders(ActiveStreamEncoderFilter* filter, ResponseHea
       continue_data_entry = entry;
     }
   }
+  ENVOY_STREAM_LOG(trace, "end FilterManager encodeHeaders filter iteration", *this);
 
   // Check if the filter chain above did not remove critical headers or set malformed header values.
   // We could do this at the codec in order to prevent other places than the filter chain from
@@ -1179,7 +1213,7 @@ void FilterManager::encodeMetadata(ActiveStreamEncoderFilter* filter,
 
   std::list<ActiveStreamEncoderFilterPtr>::iterator entry =
       commonEncodePrefix(filter, false, FilterIterationStartState::CanStartFromCurrent);
-
+  ENVOY_STREAM_LOG(trace, "begin FilterManager encodeMetadata filter iteration", *this);
   for (; entry != encoder_filters_.end(); entry++) {
     if ((*entry)->skipFilter()) {
       continue;
@@ -1194,9 +1228,12 @@ void FilterManager::encodeMetadata(ActiveStreamEncoderFilter* filter,
     }
 
     FilterMetadataStatus status = (*entry)->handle_->encodeMetadata(*metadata_map_ptr);
-    ENVOY_STREAM_LOG(trace, "encode metadata called: filter={} status={}", *this,
-                     static_cast<const void*>((*entry).get()), static_cast<uint64_t>(status));
+    ENVOY_STREAM_LOG(trace, "encode metadata called: filter={}, real filter={}, status={}", *this,
+                     static_cast<const void*>((*entry).get()), 
+                     static_cast<const void*>((*entry)->handle_.get()),
+                     static_cast<uint64_t>(status));
   }
+  ENVOY_STREAM_LOG(trace, "end FilterManager encodeMetadata filter iteration", *this);
   // TODO(soya3129): update stats with metadata.
 
   // Now encode metadata via the codec.
@@ -1251,17 +1288,28 @@ void FilterManager::encodeData(ActiveStreamEncoderFilter* filter, Buffer::Instan
   auto trailers_added_entry = encoder_filters_.end();
 
   const bool trailers_exists_at_start = filter_manager_callbacks_.responseTrailers().has_value();
+  ENVOY_STREAM_LOG(trace, "begin FilterManager encodeData filter iteration end_stream {}, filters size {}", 
+                   *this, end_stream, std::distance(entry, encoder_filters_.end()));
   for (; entry != encoder_filters_.end(); entry++) {
     if ((*entry)->skipFilter()) {
+      ENVOY_STREAM_LOG(trace,
+                       "skip encodeData filter iteration filter={}",
+                       *this, static_cast<const void*>((*entry).get()));        
       continue;
     }
     // If the filter pointed by entry has stopped for all frame type, return now.
     if (handleDataIfStopAll(**entry, data, state_.encoder_filters_streaming_)) {
+      ENVOY_STREAM_LOG(trace,
+                       "skip encodeData return filter iteration filter={} by handleDataIfStopAll",
+                       *this, static_cast<const void*>((*entry).get()));      
       return;
     }
     // If end_stream_ is marked for a filter, the data is not for this filter and filters after.
     // For details, please see the comment in the ActiveStream::decodeData() function.
     if ((*entry)->end_stream_) {
+      ENVOY_STREAM_LOG(trace,
+                       "skip encodeData return filter iteration filter={} by end_stream_",
+                       *this, static_cast<const void*>((*entry).get()));         
       return;
     }
     ASSERT(!(state_.filter_call_state_ & FilterCallState::EncodeData));
@@ -1290,8 +1338,10 @@ void FilterManager::encodeData(ActiveStreamEncoderFilter* filter, Buffer::Instan
     if (end_stream) {
       state_.filter_call_state_ &= ~FilterCallState::LastDataFrame;
     }
-    ENVOY_STREAM_LOG(trace, "encode data called: filter={} status={}", *this,
-                     static_cast<const void*>((*entry).get()), static_cast<uint64_t>(status));
+    ENVOY_STREAM_LOG(trace, "encode data called: filter={}, real filter={}, status={}", *this,
+                     static_cast<const void*>((*entry).get()), 
+                     static_cast<const void*>((*entry)->handle_.get()),
+                     static_cast<uint64_t>(status));
 
     if (!trailers_exists_at_start && filter_manager_callbacks_.responseTrailers() &&
         trailers_added_entry == encoder_filters_.end()) {
@@ -1299,9 +1349,13 @@ void FilterManager::encodeData(ActiveStreamEncoderFilter* filter, Buffer::Instan
     }
 
     if (!(*entry)->commonHandleAfterDataCallback(status, data, state_.encoder_filters_streaming_)) {
+      ENVOY_STREAM_LOG(trace,
+                       "skip encodeData return filter iteration filter={} by commonHandleAfterDataCallback",
+                       *this, static_cast<const void*>((*entry).get()));         
       return;
     }
   }
+  ENVOY_STREAM_LOG(trace, "end FilterManager encodeData filter iteration", *this);
 
   const bool modified_end_stream = end_stream && trailers_added_entry == encoder_filters_.end();
   filter_manager_callbacks_.encodeData(data, modified_end_stream);
@@ -1321,6 +1375,7 @@ void FilterManager::encodeTrailers(ActiveStreamEncoderFilter* filter,
   // Filter iteration may start at the current filter.
   std::list<ActiveStreamEncoderFilterPtr>::iterator entry =
       commonEncodePrefix(filter, true, FilterIterationStartState::CanStartFromCurrent);
+  ENVOY_STREAM_LOG(trace, "begin FilterManager encodeTrailers filter iteration", *this);
   for (; entry != encoder_filters_.end(); entry++) {
     (*entry)->maybeEvaluateMatchTreeWithNewData(
         [&](auto& matching_data) { matching_data.onResponseTrailers(trailers); });
@@ -1339,12 +1394,15 @@ void FilterManager::encodeTrailers(ActiveStreamEncoderFilter* filter,
     (*entry)->handle_->encodeComplete();
     (*entry)->end_stream_ = true;
     state_.filter_call_state_ &= ~FilterCallState::EncodeTrailers;
-    ENVOY_STREAM_LOG(trace, "encode trailers called: filter={} status={}", *this,
-                     static_cast<const void*>((*entry).get()), static_cast<uint64_t>(status));
+    ENVOY_STREAM_LOG(trace, "encode trailers called: filter={}, real filter={}, status={}", *this,
+                     static_cast<const void*>((*entry).get()), 
+                     static_cast<const void*>((*entry)->handle_.get()),
+                     static_cast<uint64_t>(status));
     if (!(*entry)->commonHandleAfterTrailersCallback(status)) {
       return;
     }
   }
+  ENVOY_STREAM_LOG(trace, "end FilterManager encodeTrailers filter iteration", *this);
 
   filter_manager_callbacks_.encodeTrailers(trailers);
   maybeEndEncode(true);
@@ -1374,6 +1432,7 @@ bool FilterManager::handleDataIfStopAll(ActiveStreamFilterBase& filter, Buffer::
     filter_streaming =
         filter.iteration_state_ == ActiveStreamFilterBase::IterationState::StopAllWatermark;
     filter.commonHandleBufferData(data);
+    ENVOY_STREAM_LOG(trace, "handleDataIfStopAll return true filter={}", *this, static_cast<const void*>(&filter));
     return true;
   }
   return false;
@@ -1546,6 +1605,7 @@ void ActiveStreamEncoderFilter::do100ContinueHeaders() {
   parent_.encode100ContinueHeaders(this, *parent_.filter_manager_callbacks_.continueHeaders());
 }
 void ActiveStreamEncoderFilter::doHeaders(bool end_stream) {
+  // 转调 filter_manger 的
   parent_.encodeHeaders(this, *parent_.filter_manager_callbacks_.responseHeaders(), end_stream);
 }
 void ActiveStreamEncoderFilter::doData(bool end_stream) {

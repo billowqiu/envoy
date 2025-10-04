@@ -74,6 +74,7 @@ void ActiveClient::StreamWrapper::onResetStream(StreamResetReason, absl::string_
 ActiveClient::ActiveClient(HttpConnPoolImplBase& parent)
     : Envoy::Http::ActiveClient(
           parent, parent.host()->cluster().maxRequestsPerConnection(),
+          // HTTP1  每个 stream 最大并发 1
           1 // HTTP1 always has a concurrent-request-limit of 1 per connection.
       ) {
   parent.host()->cluster().stats().upstream_cx_http1_total_.inc();
@@ -105,10 +106,13 @@ allocateConnPool(Event::Dispatcher& dispatcher, Random::RandomGenerator& random_
                  const Network::ConnectionSocket::OptionsSharedPtr& options,
                  const Network::TransportSocketOptionsConstSharedPtr& transport_socket_options,
                  Upstream::ClusterConnectivityState& state) {
+  // 这里有两个关键的 lamda，对应到 FixedHttpConnPoolImpl 里面的 const CreateCodecFn codec_fn_ 和 const CreateClientFn client_fn_
   return std::make_unique<FixedHttpConnPoolImpl>(
       std::move(host), std::move(priority), dispatcher, options, transport_socket_options,
       random_generator, state,
+      // const CreateClientFn client_fn_，回调参数为：FixedHttpConnPoolImpl
       [](HttpConnPoolImplBase* pool) { return std::make_unique<ActiveClient>(*pool); },
+      // const CreateCodecFn codec_fn_;
       [](Upstream::Host::CreateConnectionData& data, HttpConnPoolImplBase* pool) {
         CodecClientPtr codec{new CodecClientProd(CodecType::HTTP1, std::move(data.connection_),
                                                  data.host_description_, pool->dispatcher(),

@@ -1554,6 +1554,7 @@ RouteConstSharedPtr RouteMatcher::route(const RouteCallback& cb,
                                         const Http::RequestHeaderMap& headers,
                                         const StreamInfo::StreamInfo& stream_info,
                                         uint64_t random_value) const {
+  ENVOY_LOG(trace, "Finding route with headers {}", headers.Host() == nullptr?"no-host":absl::AsciiStrToLower(headers.getHostValue()));
   const VirtualHostImpl* virtual_host = findVirtualHost(headers);
   if (virtual_host) {
     return virtual_host->getRouteFromEntries(cb, headers, stream_info, random_value);

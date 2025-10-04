@@ -10,6 +10,7 @@ namespace Envoy {
 namespace Network {
 
 void FilterManagerImpl::addWriteFilter(WriteFilterSharedPtr filter) {
+  ENVOY_LOG(debug, "network filter_manager add write filter {}", typeid(filter.get()).name());
   ASSERT(connection_.state() == Connection::State::Open);
   ActiveWriteFilterPtr new_filter = std::make_unique<ActiveWriteFilter>(*this, filter);
   filter->initializeWriteFilterCallbacks(*new_filter);
@@ -17,11 +18,13 @@ void FilterManagerImpl::addWriteFilter(WriteFilterSharedPtr filter) {
 }
 
 void FilterManagerImpl::addFilter(FilterSharedPtr filter) {
+  ENVOY_LOG(debug, "network filter_manager add read/write filter {}", typeid(filter.get()).name());
   addReadFilter(filter);
   addWriteFilter(filter);
 }
 
 void FilterManagerImpl::addReadFilter(ReadFilterSharedPtr filter) {
+  ENVOY_LOG(debug, "network filter_manager add read filter {}", typeid(filter.get()).name());
   ASSERT(connection_.state() == Connection::State::Open);
   ActiveReadFilterPtr new_filter = std::make_unique<ActiveReadFilter>(*this, filter);
   filter->initializeReadFilterCallbacks(*new_filter);
@@ -29,6 +32,7 @@ void FilterManagerImpl::addReadFilter(ReadFilterSharedPtr filter) {
 }
 
 void FilterManagerImpl::removeReadFilter(ReadFilterSharedPtr filter_to_remove) {
+  ENVOY_LOG(debug, "network filter_manager remove read filter {}", typeid(filter_to_remove.get()).name());
   // For perf/safety reasons, null this out rather than removing.
   for (auto& filter : upstream_filters_) {
     if (filter->filter_ == filter_to_remove) {
@@ -75,6 +79,8 @@ void FilterManagerImpl::onContinueReading(ActiveReadFilter* filter,
 
     StreamBuffer read_buffer = buffer_source.getReadBuffer();
     if (read_buffer.buffer.length() > 0 || read_buffer.end_stream) {
+      ENVOY_LOG(debug, "network filter_manager call filter onData {}, end_stream {}", 
+                typeid((*entry)->filter_).name(), read_buffer.end_stream);
       FilterStatus status = (*entry)->filter_->onData(read_buffer.buffer, read_buffer.end_stream);
       if (status == FilterStatus::StopIteration || connection_.state() != Connection::State::Open) {
         return;
@@ -107,6 +113,8 @@ FilterStatus FilterManagerImpl::onWrite(ActiveWriteFilter* filter,
 
   for (; entry != downstream_filters_.end(); entry++) {
     StreamBuffer write_buffer = buffer_source.getWriteBuffer();
+    ENVOY_LOG(debug, "network filter_manager call downstream_filters onWrite {}, end_stream {}", 
+              typeid((*entry)->filter_).name(), write_buffer.end_stream);
     FilterStatus status = (*entry)->filter_->onWrite(write_buffer.buffer, write_buffer.end_stream);
     if (status == FilterStatus::StopIteration || connection_.state() != Connection::State::Open) {
       return FilterStatus::StopIteration;

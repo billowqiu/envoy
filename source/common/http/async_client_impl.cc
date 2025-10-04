@@ -39,10 +39,13 @@ AsyncClientImpl::AsyncClientImpl(Upstream::ClusterInfoConstSharedPtr cluster,
                                  Router::ShadowWriterPtr&& shadow_writer,
                                  Http::Context& http_context, Router::Context& router_context)
     : cluster_(cluster),
+      // 构造 router config
       config_(http_context.asyncClientStatPrefix(), local_info, stats_store, cm, runtime, random,
               std::move(shadow_writer), true, false, false, false, false, {},
               dispatcher.timeSource(), http_context, router_context),
-      dispatcher_(dispatcher), singleton_manager_(cm.clusterManagerFactory().singletonManager()) {}
+      dispatcher_(dispatcher), singleton_manager_(cm.clusterManagerFactory().singletonManager()) {
+  ENVOY_LOG(trace, "construct an AsyncClientImpl instance {}", static_cast<void*>(this));
+}
 
 AsyncClientImpl::~AsyncClientImpl() {
   while (!active_streams_.empty()) {
@@ -135,6 +138,7 @@ void AsyncStreamImpl::encodeTrailers(ResponseTrailerMapPtr&& trailers) {
 }
 
 void AsyncStreamImpl::sendHeaders(RequestHeaderMap& headers, bool end_stream) {
+  ENVOY_LOG(debug, "async http request send headers:\n{}, end_stream {}", headers, end_stream);
   if (Http::Headers::get().MethodValues.Head == headers.getMethodValue()) {
     is_head_request_ = true;
   }
@@ -144,11 +148,13 @@ void AsyncStreamImpl::sendHeaders(RequestHeaderMap& headers, bool end_stream) {
   if (send_xff_) {
     Utility::appendXff(headers, *parent_.config_.local_info_.address());
   }
+  // 转到 router 模块，创建上游的链接
   router_.decodeHeaders(headers, end_stream);
   closeLocal(end_stream);
 }
 
 void AsyncStreamImpl::sendData(Buffer::Instance& data, bool end_stream) {
+  ENVOY_LOG(debug, "async http request send sendData, end_stream {}", end_stream);
   ASSERT(dispatcher().isThreadSafe());
   // Map send calls after local closure to no-ops. The send call could have been queued prior to
   // remote reset or closure, and/or closure could have occurred synchronously in response to a
@@ -170,6 +176,7 @@ void AsyncStreamImpl::sendData(Buffer::Instance& data, bool end_stream) {
 }
 
 void AsyncStreamImpl::sendTrailers(RequestTrailerMap& trailers) {
+  ENVOY_LOG(debug, "async http request send sendTrailers, trailers {}", trailers);
   ASSERT(dispatcher().isThreadSafe());
   // See explanation in sendData.
   if (local_closed_) {
@@ -261,6 +268,7 @@ AsyncRequestImpl::AsyncRequestImpl(RequestMessagePtr&& request, AsyncClientImpl&
 
 void AsyncRequestImpl::initialize() {
   child_span_->injectContext(request_->headers());
+  // 发送 header 以及可能的 body；并不是这里就把数据写到 fd 了，而是要等底层的 event 通知可写事件才会真正的写入
   sendHeaders(request_->headers(), request_->body().length() == 0);
   if (request_->body().length() != 0) {
     // It's possible this will be a no-op due to a local response synchronously generated in

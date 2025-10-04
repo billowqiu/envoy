@@ -462,7 +462,9 @@ protected:
 
     void dumpState(std::ostream& os, int indent_level) const;
     HeaderString request_url_;
+    // downstream 的请求解码回调器，实际指向的是 HCM 中的 ActiveStream 对象，会通过 filter_manager 依次回调熟悉的各个decodeXXX
     RequestDecoder* request_decoder_{};
+    // 上面请求对应的响应编码器
     ResponseEncoderImpl response_encoder_;
     bool remote_complete_{};
   };
@@ -526,7 +528,7 @@ private:
   void maybeAddSentinelBufferFragment(Buffer::Instance& output_buffer) override;
   Status doFloodProtectionChecks() const;
   Status checkHeaderNameForUnderscores() override;
-
+  // HCM，在此类中唯一出场地方为 newStream 的调用
   ServerConnectionCallbacks& callbacks_;
   absl::optional<ActiveRequest> active_request_;
   const Buffer::OwnedBufferFragmentImpl::Releasor response_buffer_releasor_;
@@ -573,6 +575,7 @@ private:
   // ConnectionImpl
   Http::Status dispatch(Buffer::Instance& data) override;
   void onEncodeComplete() override {}
+  // 作为客户端的链接直接返回
   Status onMessageBeginBase() override { return okStatus(); }
   Envoy::StatusOr<ParserStatus> onHeadersCompleteBase() override;
   bool upgradeAllowed() const override;

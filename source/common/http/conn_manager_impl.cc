@@ -273,7 +273,8 @@ RequestDecoder& ConnectionManagerImpl::newStream(ResponseEncoder& response_encod
     connection_idle_timer_->disableTimer();
   }
 
-  ENVOY_CONN_LOG(debug, "new stream", read_callbacks_->connection());
+  ENVOY_CONN_LOG(debug, "new stream, local address {}", read_callbacks_->connection(), 
+                 response_encoder.getStream().connectionLocalAddress()->asString());
 
   // Create account, wiring the stream to use it for tracking bytes.
   // If tracking is disabled, the wiring becomes a NOP.
@@ -281,6 +282,7 @@ RequestDecoder& ConnectionManagerImpl::newStream(ResponseEncoder& response_encod
   Buffer::BufferMemoryAccountSharedPtr downstream_stream_account =
       buffer_factory.createAccount(response_encoder.getStream());
   response_encoder.getStream().setAccount(downstream_stream_account);
+  // 创建一条 stream
   ActiveStreamPtr new_stream(new ActiveStream(*this, response_encoder.getStream().bufferLimit(),
                                               std::move(downstream_stream_account)));
 
@@ -354,7 +356,7 @@ Network::FilterStatus ConnectionManagerImpl::onData(Buffer::Instance& data, bool
   do {
     redispatch = false;
 
-    // 回调 codec 
+    // 回调 codec，http1，2, 3的具体实现
     const Status status = codec_->dispatch(data);
 
     if (isBufferFloodError(status) || isInboundFramesWithEmptyPayloadError(status)) {
@@ -615,6 +617,7 @@ ConnectionManagerImpl::ActiveStream::ActiveStream(ConnectionManagerImpl& connect
                                                   Buffer::BufferMemoryAccountSharedPtr account)
     : connection_manager_(connection_manager),
       stream_id_(connection_manager.random_generator_.random()),
+      // 构造 filter_manager
       filter_manager_(*this, connection_manager_.read_callbacks_->connection().dispatcher(),
                       connection_manager_.read_callbacks_->connection(), stream_id_,
                       std::move(account), connection_manager_.config_.proxy100Continue(),
@@ -1008,9 +1011,9 @@ void ConnectionManagerImpl::ActiveStream::decodeHeaders(RequestHeaderMapPtr&& he
     filter_manager_.setDownstreamRemoteAddress(mutate_result.final_remote_address);
   }
   ASSERT(filter_manager_.streamInfo().downstreamAddressProvider().remoteAddress() != nullptr);
-
+  // 在此之前不应该有路由
   ASSERT(!cached_route_);
-  // 刷路由缓存
+  // 所以在 stream decodeHeader 的时候就会刷路由缓存了
   refreshCachedRoute();
 
   if (!state_.is_internally_created_) { // Only mutate tracing headers on first pass.
@@ -1023,7 +1026,7 @@ void ConnectionManagerImpl::ActiveStream::decodeHeaders(RequestHeaderMapPtr&& he
   filter_manager_.streamInfo().setRequestHeaders(*request_headers_);
 
   // 构建 filter 链，调用完之后针对此 stream 的 filter 链就构建好了
-  ENVOY_STREAM_LOG(debug, "filter_manager createFilterChain", *this);
+  ENVOY_STREAM_LOG(debug, "http filter_manager createFilterChain", *this);
   const bool upgrade_rejected = filter_manager_.createFilterChain() == false;
 
   // TODO if there are no filters when starting a filter iteration, the connection manager
@@ -1141,7 +1144,7 @@ void ConnectionManagerImpl::ActiveStream::decodeData(Buffer::Instance& data, boo
                                connection_manager_.read_callbacks_->connection().dispatcher());
   filter_manager_.maybeEndDecode(end_stream);
   filter_manager_.streamInfo().addBytesReceived(data.length());
-
+  // 回调各个插件
   filter_manager_.decodeData(data, end_stream);
 }
 
@@ -1153,6 +1156,7 @@ void ConnectionManagerImpl::ActiveStream::decodeTrailers(RequestTrailerMapPtr&& 
   ASSERT(!request_trailers_);
   request_trailers_ = std::move(trailers);
   filter_manager_.maybeEndDecode(true);
+  // 回调各个插件
   filter_manager_.decodeTrailers(*request_trailers_);
 }
 
@@ -1161,6 +1165,7 @@ void ConnectionManagerImpl::ActiveStream::decodeMetadata(MetadataMapPtr&& metada
   // After going through filters, the ownership of metadata_map will be passed to terminal filter.
   // The terminal filter may encode metadata_map to the next hop immediately or store metadata_map
   // and encode later when connection pool is ready.
+  // 回调各个插件
   filter_manager_.decodeMetadata(*metadata_map);
 }
 
@@ -1296,12 +1301,12 @@ void ConnectionManagerImpl::ActiveStream::refreshCachedRoute(const Router::Route
       if (!route) {
         ENVOY_STREAM_LOG(debug, "refreshCachedRoute empty route", *this);
       } else if (route->routeEntry()) {
-        ENVOY_STREAM_LOG(debug, "refreshCachedRoute route cluster name: {}, route name: {}", *this, route->routeEntry()->clusterName(), route->routeEntry()->routeName());
+        ENVOY_STREAM_LOG(debug, "refreshCachedRoute route cluster name: {}, route name: {}", 
+                        *this, route->routeEntry()->clusterName(), route->routeEntry()->routeName());
       } else {
           ENVOY_STREAM_LOG(debug, "refreshCachedRoute has route, but entry empty", *this);
       }
     }
-
   }
 
   setRoute(route);
@@ -1615,6 +1620,7 @@ Upstream::ClusterInfoConstSharedPtr ConnectionManagerImpl::ActiveStream::cluster
 
 Router::RouteConstSharedPtr
 ConnectionManagerImpl::ActiveStream::route(const Router::RouteCallback& cb) {
+  // 有缓存直接返回，没有就重新构建一个新的缓存起来
   if (cached_route_.has_value()) {
     return cached_route_.value();
   }

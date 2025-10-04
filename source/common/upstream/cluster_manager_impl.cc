@@ -917,7 +917,7 @@ ClusterManagerImpl::ThreadLocalClusterManagerImpl::ClusterEntry::httpConnPool(
   if (pool == nullptr) {
     return absl::nullopt;
   }
-
+  // 这里将 router 里面 那个 pool_data 串起来了
   HttpPoolData data(
       [this, priority, protocol, context]() -> void {
         // Now that a new stream is being established, attempt to preconnect.
@@ -1023,7 +1023,7 @@ void ClusterManagerImpl::postThreadLocalClusterUpdate(ClusterManagerCluster& cm_
       } else {
         ENVOY_LOG(debug, "adding TLS cluster {}", info->name());
       }
-
+      ENVOY_LOG(debug, "consturct new  ClusterEntry {}, add_or_update_cluster {}", info->name(), add_or_update_cluster);
       new_cluster = new ThreadLocalClusterManagerImpl::ClusterEntry(*cluster_manager, info,
                                                                     load_balancer_factory);
       cluster_manager->thread_local_clusters_[info->name()].reset(new_cluster);
@@ -1509,6 +1509,8 @@ ClusterManagerImpl::ThreadLocalClusterManagerImpl::ClusterEntry::httpConnPoolImp
   // function. Otherwise, we'd need to capture a few of these variables by value.
   ConnPoolsContainer::ConnPools::PoolOptRef pool =
       container.pools_->getPool(priority, hash_key, [&]() {
+        ENVOY_LOG(debug, "allocateConnPool set client&codec create lamda with host: {}, priority: {}, upstream_protocols: {}", 
+                  host, priority, upstream_protocols[0]);
         auto pool = parent_.parent_.factory_.allocateConnPool(
             parent_.thread_local_dispatcher_, host, priority, upstream_protocols,
             alternate_protocol_options, !upstream_options->empty() ? upstream_options : nullptr,
@@ -1660,6 +1662,10 @@ Http::ConnectionPool::InstancePtr ProdClusterManagerFactory::allocateConnPool(
     const Network::ConnectionSocket::OptionsSharedPtr& options,
     const Network::TransportSocketOptionsConstSharedPtr& transport_socket_options,
     TimeSource& source, ClusterConnectivityState& state) {
+  ENVOY_LOG_MISC(debug, "http allocateConnPool protocol size {}", protocols.size());
+  for(auto& proto : protocols) {
+    ENVOY_LOG_MISC(debug, "http allocateConnPool protocol {}", proto); 
+  }
   if (protocols.size() == 3 &&
       context_.runtime().snapshot().featureEnabled("upstream.use_http3", 100)) {
     ASSERT(contains(protocols,

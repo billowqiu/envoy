@@ -41,14 +41,14 @@
 #include "source/common/stream_info/stream_info_impl.h"
 #include "source/common/tracing/http_tracer_impl.h"
 #include "source/common/upstream/retry_factory.h"
-
+#include "source/common/common/logger.h"
 namespace Envoy {
 namespace Http {
 
 class AsyncStreamImpl;
 class AsyncRequestImpl;
 
-class AsyncClientImpl final : public AsyncClient {
+class AsyncClientImpl final : public AsyncClient, Logger::Loggable<Logger::Id::http> {
 public:
   AsyncClientImpl(Upstream::ClusterInfoConstSharedPtr cluster, Stats::Store& stats_store,
                   Event::Dispatcher& dispatcher, const LocalInfo::LocalInfo& local_info,
@@ -65,6 +65,7 @@ public:
 
 private:
   Upstream::ClusterInfoConstSharedPtr cluster_;
+  // 这里还藏着一个 router 的 config
   Router::FilterConfig config_;
   Event::Dispatcher& dispatcher_;
   std::list<std::unique_ptr<AsyncStreamImpl>> active_streams_;

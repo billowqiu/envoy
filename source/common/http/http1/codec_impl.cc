@@ -490,6 +490,7 @@ ConnectionImpl::ConnectionImpl(Network::Connection& connection, CodecStats& stat
           []() -> void { /* TODO(adisuissa): Handle overflow watermark */ })),
       max_headers_kb_(max_headers_kb), max_headers_count_(max_headers_count) {
   output_buffer_->setWatermarks(connection.bufferLimit());
+  // 新版本换成了BalsaParser
   parser_ = std::make_unique<LegacyHttpParserImpl>(type, this);
 }
 
@@ -833,7 +834,7 @@ void ConnectionImpl::onChunkHeader(bool is_final_chunk) {
 }
 
 StatusOr<ParserStatus> ConnectionImpl::onMessageComplete() {
-  ENVOY_CONN_LOG(trace, "message complete", connection_);
+  ENVOY_CONN_LOG(trace, "ConnectionImpl: message complete", connection_);
 
   dispatchBufferedBody();
 
@@ -850,7 +851,7 @@ StatusOr<ParserStatus> ConnectionImpl::onMessageComplete() {
   if (header_parsing_state_ == HeaderParsingState::Value) {
     RETURN_IF_ERROR(completeLastHeader());
   }
-
+  ENVOY_CONN_LOG(trace, "call child class onMessageCompleteBase", connection_);
   return onMessageCompleteBase();
 }
 
@@ -1100,6 +1101,8 @@ Envoy::StatusOr<ParserStatus> ServerConnectionImpl::onHeadersCompleteBase() {
     if (parser_->isChunked() ||
         (parser_->contentLength().has_value() && parser_->contentLength().value() > 0) ||
         handling_upgrade_) {
+      // 回调 ActiveStream
+      ENVOY_CONN_LOG(trace, "callback HCM ActiveStream decodeHeaders", connection_);
       active_request.request_decoder_->decodeHeaders(std::move(headers), false);
 
       // If the connection has been closed (or is closing) after decoding headers, pause the parser
@@ -1124,6 +1127,7 @@ Status ServerConnectionImpl::onMessageBeginBase() {
       return codecClientError("cannot create new streams after calling reset");
     }
     // 开启一个新的 stream，回调 ConnectionManagerImpl
+    ENVOY_CONN_LOG(trace, "call HCM newStream with response encoder", connection_);
     active_request.request_decoder_ = &callbacks_.newStream(active_request.response_encoder_);
 
     // Check for pipelined request flood as we prepare to accept a new request.
@@ -1147,7 +1151,8 @@ Status ServerConnectionImpl::onUrl(const char* data, size_t length) {
 void ServerConnectionImpl::onBody(Buffer::Instance& data) {
   ASSERT(!deferred_end_stream_headers_);
   if (active_request_.has_value()) {
-    ENVOY_CONN_LOG(trace, "body size={}", connection_, data.length());
+    ENVOY_CONN_LOG(trace, "body size={}, callback HCM ActiveStream decodeData", connection_, data.length());
+    // 开启filte chain 的 decodeData 之路
     active_request_.value().request_decoder_->decodeData(data, false);
   }
 }
@@ -1163,7 +1168,7 @@ ParserStatus ServerConnectionImpl::onMessageCompleteBase() {
     }
     active_request.remote_complete_ = true;
     if (deferred_end_stream_headers_) {
-      ENVOY_CONN_LOG(trace, "ServerConnectionImpl decodeHeaders callback", connection_);
+      ENVOY_CONN_LOG(trace, "ServerConnectionImpl HCM ActiveStream decodeHeaders callback", connection_);
       // ConnectionManagerImpl::ActiveStream::decodeHeaders
       active_request.request_decoder_->decodeHeaders(
           std::move(absl::get<RequestHeaderMapPtr>(headers_or_trailers_)), true);
@@ -1288,7 +1293,8 @@ RequestEncoder& ClientConnectionImpl::newStream(ResponseDecoder& response_decode
 }
 
 Envoy::StatusOr<ParserStatus> ClientConnectionImpl::onHeadersCompleteBase() {
-  ENVOY_CONN_LOG(trace, "status_code {}", connection_, parser_->statusCode());
+  // upstream 返回的状态码
+  ENVOY_CONN_LOG(trace, "upstream status_code {}", connection_, parser_->statusCode());
 
   // Handle the case where the client is closing a kept alive connection (by sending a 408
   // with a 'Connection: close' header). In this case we just let response flush out followed

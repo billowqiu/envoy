@@ -224,6 +224,7 @@ HttpConnectionManagerFilterConfigFactory::createFilterFactoryFromProtoAndHopByHo
   // as these captured objects are also global singletons.
   return [singletons, filter_config, &context,
           clear_hop_by_hop_headers](Network::FilterManager& filter_manager) -> void {
+    // 这里就是创建 HCM 的工厂回调函数，函数在回调的时候会传入 network 类别的 filter_manager
     auto hcm = std::make_shared<Http::ConnectionManagerImpl>(
         *filter_config, context.drainDecision(), context.api().randomGenerator(),
         context.httpContext(), context.runtime(), context.localInfo(), context.clusterManager(),
@@ -231,6 +232,7 @@ HttpConnectionManagerFilterConfigFactory::createFilterFactoryFromProtoAndHopByHo
     if (!clear_hop_by_hop_headers) {
       hcm->setClearHopByHopResponseHeaders(false);
     }
+    // 将 hcm 添加到 network 的 filter_manager
     filter_manager.addReadFilter(std::move(hcm));
   };
 }
@@ -717,6 +719,7 @@ HttpConnectionManagerConfig::createCodec(Network::Connection& connection,
 #endif
   // 默认一般都选的这个
   case CodecType::AUTO:
+    ENVOY_LOG(debug, "autoCreateCodec with data");
     return Http::ConnectionManagerUtility::autoCreateCodec(
         connection, data, callbacks, context_.scope(), context_.api().randomGenerator(),
         http1_codec_stats_, http2_codec_stats_, http1_settings_, http2_options_,

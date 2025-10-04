@@ -60,6 +60,7 @@ ConnectionPool::Cancellable*
 HttpConnPoolImplBase::newStream(Http::ResponseDecoder& response_decoder,
                                 Http::ConnectionPool::Callbacks& callbacks) {
   HttpAttachContext context({&response_decoder, &callbacks});
+  // 调用 source/common/conn_pool/conn_pool_base.cc
   return newStreamImpl(context);
 }
 

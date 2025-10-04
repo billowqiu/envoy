@@ -297,7 +297,9 @@ private:
   Http::HeaderMapPtr getHeaderMap(const Filters::Common::ExtAuthz::ResponsePtr& response);
   FilterConfigSharedPtr config_;
   Filters::Common::ExtAuthz::ClientPtr client_;
+  // ActiveStreamDecoderFilter
   Http::StreamDecoderFilterCallbacks* decoder_callbacks_{};
+  // ActiveStreamEncoderFilter
   Http::StreamEncoderFilterCallbacks* encoder_callbacks_{};
   Http::RequestHeaderMap* request_headers_;
   Http::HeaderVector response_headers_to_add_{};
